@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: AI Service Desk Knowledge Intelligence Platform REST API
+  description: Enterprise ServiceNow RAG Knowledge Intelligence & Pre-Incident Deflection Engine
+  version: 2.5.0-SNAPSHOT
+  contact:
+    name: Platform Engineering
+    email: platform-team@enterprise.com
+servers:
+  - url: http://localhost:8080
+    description: Local Container Runtime
+  - url: https://ai-servicedesk.internal.enterprise.com
+    description: Production Enterprise Environment
+
+paths:
+  /api/v1/suggestions/resolve:
+    post:
+      tags:
+        - AI Suggestion Engine
+      summary: Generate AI resolution for pre-ticket query
+      operationId: resolveIncident
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveIncidentRequest'
+      responses:
+        '200':
+          description: Successful AI resolution generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestionResponse'
+        '400':
+          description: Invalid request parameters
+        '500':
+          description: Internal server error
+
+  /api/v1/knowledge/documents:
+    get:
+      tags:
+        - Knowledge Base
+      summary: List all indexed knowledge documents
+      responses:
+        '200':
+          description: List of document metadata records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentMetadata'
+    post:
+      tags:
+        - Knowledge Base
+      summary: Ingest document for vector embedding indexing
+      responses:
+        '200':
+          description: Successfully ingested document metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentMetadata'
+
+  /api/v1/servicenow/incidents:
+    post:
+      tags:
+        - ServiceNow Integration
+      summary: Create ServiceNow incident ticket
+      responses:
+        '200':
+          description: Created incident record in ServiceNow
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+
+  /api/v1/analytics/deflection:
+    get:
+      tags:
+        - Analytics
+      summary: Retrieve ROI and ticket deflection analytics metrics
+      responses:
+        '200':
+          description: Current deflection metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeflectionMetrics'
+
+components:
+  schemas:
+    ResolveIncidentRequest:
+      type: object
+      required:
+        - title
+        - description
+      properties:
+        title:
+          type: string
+          example: "GlobalProtect VPN Connection Failed"
+        description:
+          type: string
+          example: "User receives error Server Certificate Invalid when connecting to VPN"
+        callerEmail:
+          type: string
+          example: "user@enterprise.com"
+        userDepartment:
+          type: string
+          example: "Sales"
+        category:
+          type: string
+          example: "Network"
+        minConfidenceThreshold:
+          type: integer
+          example: 75
+
+    SuggestionResponse:
+      type: object
+      properties:
+        suggestionId:
+          type: string
+          example: "sug-92810"
+        queryTitle:
+          type: string
+        recommendedTitle:
+          type: string
+        summaryResolution:
+          type: string
+        stepByStepInstructions:
+          type: array
+          items:
+            type: string
+        codeOrCommandSnippet:
+          type: string
+        confidenceScore:
+          type: integer
+          example: 92
+        confidenceBand:
+          type: string
+          example: "VERY_HIGH"
+        deflectionSuccessful:
+          type: boolean
+          example: true
+        sourcesCount:
+          type: integer
+          example: 3
+        generatedByModel:
+          type: string
+          example: "gemini-3.6-flash"
+
+    DocumentMetadata:
+      type: object
+      properties:
+        documentId:
+          type: string
+        title:
+          type: string
+        sourceType:
+          type: string
+        department:
+          type: string
+        category:
+          type: string
+
+    Incident:
+      type: object
+      properties:
+        sysId:
+          type: string
+        number:
+          type: string
+        title:
+          type: string
+        state:
+          type: string
+
+    DeflectionMetrics:
+      type: object
+      properties:
+        totalIncidentsAnalyzed:
+          type: integer
+        ticketsDeflectedCount:
+          type: integer
+        deflectionRatePercent:
+          type: number
+        monthlyCostSavingsUSD:
+          type: number

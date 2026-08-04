@@ -1,0 +1,403 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "AI Service Desk Knowledge Intelligence Platform",
+    "description": "Postman Collection for the AI Service Desk Platform — Enterprise Pre-Incident AI Deflection Engine. Covers health checks, knowledge base management, AI resolution suggestions, ServiceNow integration, file storage, and analytics.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Telemetry",
+      "item": [
+        {
+          "name": "Platform Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health"]
+            }
+          },
+          "response": [
+            {
+              "name": "OK (200)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/health",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "health"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"status\": \"healthy\",\n  \"timestamp\": \"2026-08-03T16:00:00Z\",\n  \"service\": \"AI Service Desk Knowledge Intelligence Platform\",\n  \"version\": \"2.5.0-SNAPSHOT\",\n  \"pineconeStatus\": \"connected\",\n  \"servicenowStatus\": \"synced\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "ServiceNow Connection Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/servicenow/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "servicenow", "health"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Actuator Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Actuator Prometheus Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/prometheus",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "prometheus"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "AI Suggestion Engine",
+      "item": [
+        {
+          "name": "Resolve Incident (AI Deflection)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"VPN keeps disconnecting every 30 minutes\",\n  \"description\": \"My GlobalProtect VPN connection drops every 30 minutes. I have to reconnect manually each time. This started after the Windows update last week.\",\n  \"callerEmail\": \"john.doe@enterprise.com\",\n  \"userDepartment\": \"Finance\",\n  \"category\": \"Network\",\n  \"minConfidenceThreshold\": 75\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/suggestions/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "suggestions", "resolve"]
+            }
+          },
+          "response": [
+            {
+              "name": "Success (200)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"VPN keeps disconnecting every 30 minutes\",\n  \"description\": \"My GlobalProtect VPN connection drops every 30 minutes.\",\n  \"callerEmail\": \"john.doe@enterprise.com\",\n  \"userDepartment\": \"Finance\",\n  \"category\": \"Network\",\n  \"minConfidenceThreshold\": 75\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/suggestions/resolve",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "suggestions", "resolve"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"suggestionId\": \"sug-a1b2c3d4\",\n  \"queryTitle\": \"VPN keeps disconnecting every 30 minutes\",\n  \"recommendedTitle\": \"GlobalProtect VPN Tunnel Disconnection & Certificate Renewal\",\n  \"summaryResolution\": \"Reset the GlobalProtect agent cache and renew the client certificate...\",\n  \"stepByStepInstructions\": [\"Step 1: Open GlobalProtect Settings\", \"Step 2: Clear cache\"],\n  \"codeOrCommandSnippet\": \"gprestart.exe --clear-cache\",\n  \"confidenceScore\": 87.5,\n  \"confidenceBand\": \"HIGH\",\n  \"deflectionSuccessful\": true,\n  \"referencedSourcesCount\": 3,\n  \"generatedByModel\": \"gemini-3.6-flash\",\n  \"createdAt\": \"2026-08-03T16:00:00Z\",\n  \"correlationId\": \"corr-xyz-123\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Resolve Incident (Low Confidence - Creates Ticket)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Printer on 3rd floor not printing\",\n  \"description\": \"The HP LaserJet on the 3rd floor near conference room B is not responding to print jobs.\",\n  \"callerEmail\": \"jane.smith@enterprise.com\",\n  \"userDepartment\": \"HR\",\n  \"category\": \"Hardware\",\n  \"minConfidenceThreshold\": 75\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/suggestions/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "suggestions", "resolve"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Knowledge Base",
+      "item": [
+        {
+          "name": "List Knowledge Documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "knowledge", "documents"]
+            }
+          },
+          "response": [
+            {
+              "name": "OK (200)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/knowledge/documents",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "knowledge", "documents"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "[\n  {\n    \"documentId\": \"doc-okta-sso\",\n    \"title\": \"Okta SSO Multi-Factor Authentication Reset Runbook\",\n    \"sourceType\": \"SERVICENOW_KB\",\n    \"department\": \"Identity & Access\",\n    \"category\": \"Authentication\",\n    \"version\": \"v2.4\"\n  },\n  {\n    \"documentId\": \"doc-vpn-global\",\n    \"title\": \"GlobalProtect VPN Tunnel Disconnection & Certificate Renewal SOP\",\n    \"sourceType\": \"CONFLUENCE_PAGE\",\n    \"department\": \"Network Infrastructure\",\n    \"category\": \"VPN\",\n    \"version\": \"v3.1\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "Ingest Knowledge Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Active Directory Password Reset SOP\",\n  \"department\": \"Identity & Access\",\n  \"category\": \"Authentication\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "knowledge", "documents"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "File Storage & Upload",
+      "item": [
+        {
+          "name": "Upload Document",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "description": "Document to upload (PDF, DOCX, XLSX, CSV, MD, TXT)",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/files/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "files", "upload"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List All Documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/files",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "files"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Upload Job Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/files/jobs/{jobId}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "files", "jobs", "{jobId}"],
+              "variable": [
+                {
+                  "key": "jobId",
+                  "value": "job-abc123",
+                  "description": "Upload job ID"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Download Document",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/files/{documentId}/download",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "files", "{documentId}", "download"],
+              "variable": [
+                {
+                  "key": "documentId",
+                  "value": "doc-abc123",
+                  "description": "Document ID to download"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "ServiceNow Integration",
+      "item": [
+        {
+          "name": "Create Incident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Unable to access email after password reset\",\n  \"description\": \"User reset password via self-service portal but Outlook still shows old credentials error.\",\n  \"callerEmail\": \"user@enterprise.com\",\n  \"department\": \"Finance\",\n  \"category\": \"Email\",\n  \"priority\": \"3\",\n  \"assignedGroup\": \"L1 Service Desk\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/servicenow/incidents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "servicenow", "incidents"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check ServiceNow Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/servicenow/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "servicenow", "health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Analytics & ROI",
+      "item": [
+        {
+          "name": "Get Deflection Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/analytics/deflection",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "analytics", "deflection"]
+            }
+          },
+          "response": [
+            {
+              "name": "OK (200)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/analytics/deflection",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "analytics", "deflection"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"totalQueries\": 1250,\n  \"deflectedQueries\": 980,\n  \"deflectionRate\": 78.4,\n  \"estimatedSavingsUSD\": 15200.50,\n  \"avgConfidenceScore\": 82.3,\n  \"topDeflectedCategories\": [\"VPN\", \"Password Reset\", \"Software Access\"]\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

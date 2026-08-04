@@ -1,0 +1,6 @@
+{
+  "name": "AI Service Desk Knowledge Intelligence Platform",
+  "description": "Enterprise ServiceNow knowledge intelligence and AI incident deflection platform powered by Google AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

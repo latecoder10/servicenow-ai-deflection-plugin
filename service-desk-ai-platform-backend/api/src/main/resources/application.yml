@@ -1,0 +1,83 @@
+spring:
+  application:
+    name: service-desk-ai-platform
+  profiles:
+    active: dev
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 10
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 50
+          order_inserts: true
+          order_updates: true
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    enabled: true
+    drop-first: false
+
+  task:
+    execution:
+      pool:
+        core-size: 10
+        max-size: 50
+        queue-capacity: 1000
+        keep-alive: 60s
+      thread-name-prefix: async-ingestion-
+
+storage:
+  type: LOCAL_FILE_SYSTEM
+  local:
+    root-path: ${STORAGE_ROOT_PATH:./storage}
+    document-folder: ${STORAGE_DOC_FOLDER:documents}
+    knowledge-folder: ${STORAGE_KNOWLEDGE_FOLDER:knowledge}
+    temp-folder: ${STORAGE_TEMP_FOLDER:temp}
+    archive-folder: ${STORAGE_ARCHIVE_FOLDER:archive}
+    failed-folder: ${STORAGE_FAILED_FOLDER:failed}
+    max-file-size-bytes: 104857600 # 100MB
+
+ai:
+  llm:
+    provider: GEMINI
+    model-name: gemini-3.6-flash
+    api-key: ${GEMINI_API_KEY}
+  embedding:
+    provider: GEMINI
+    model-name: text-embedding-004
+    dimension: 1024
+  pinecone:
+    api-key: ${AI_PINECONE_API_KEY}
+    host: ${AI_PINECONE_HOST}
+    index-name: servicedesk-knowledge
+    dimension: 1024
+    namespace-prefix: ""
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

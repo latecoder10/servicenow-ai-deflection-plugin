@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+target/
+build/
+dist/
+*.class
+*.jar
+*.war
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Gradle
+.gradle/
+gradle/
+gradlew
+gradlew.cmd
+
+# Coverage & test
+coverage/
+test-results/
+*.exec
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# Uploaded documents
+storage/
+api/storage/
+
+# Misc
+*.swp
+*.swo
+*~
