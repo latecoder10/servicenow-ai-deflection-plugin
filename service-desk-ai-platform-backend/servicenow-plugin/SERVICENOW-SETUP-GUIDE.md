@@ -1,120 +1,55 @@
-# ServiceNow AI Plugin — Step-by-Step Setup Guide
+﻿# ServiceNow AI Service Desk - Complete Setup Walkthrough
 
-## Prerequisites
-
-Before starting, ensure:
-1. Backend is running: `http://localhost:8080/actuator/health` returns `{"status":"UP"}`
-2. Cloudflare Tunnel is running (see below)
-3. You have ServiceNow admin access
+## Overview
+This guide walks you through setting up the AI Service Desk plugin in ServiceNow. When an agent types a ticket description, the system searches the knowledge base and suggests similar resolved incidents.
 
 ---
 
-## Step 0: Cloudflare Tunnel Setup
+## Prerequisites
 
-Since the app is running locally and ServiceNow needs to reach it from the cloud, we need a public URL.
+| Requirement | Status |
+|-------------|--------|
+| Backend running on `http://localhost:8080` | Verify: `http://localhost:8080/actuator/health` returns `{"status":"UP"}` |
+| Cloudflare Tunnel running | Current URL: `https://sciences-tap-museum-insulation.trycloudflare.com` |
+| ServiceNow admin access | Instance: `dev440425.service-now.com` |
+| Browser with DevTools access | Press F12 to open |
 
-### Install cloudflared
+---
 
-```bash
-npm install -g cloudflared
-```
+## Step 1: Verify Backend is Reachable
 
-Or download from: `https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/`
-
-### Start the Tunnel
-
-```bash
-cloudflared tunnel --url http://localhost:8080
-```
-
-This displays a URL like:
-```
-https://sciences-tap-museum-insulation.trycloudflare.com
-```
-
-### Verify Tunnel Works
-
-Open in browser:
+Open your browser and go to:
 ```
 https://sciences-tap-museum-insulation.trycloudflare.com/actuator/health
 ```
 
-Should return: `{"status":"UP"}`
+**Expected result:** You should see `{"status":"UP"}`
 
-**Note:** This URL changes on each restart. Update ServiceNow when it changes.
+If this fails, the tunnel is down. Restart it.
 
 ---
 
-## Phase 1: ServiceNow Backend
+## Step 2: Create Script Include
 
-### Step 1: Create REST Message
+The Script Include is a server-side script that GlideAjax calls from the browser.
 
 1. Log in to ServiceNow: `https://dev440425.service-now.com`
-2. In filter navigator, type: `REST Message`
-3. Navigate to: **System Web Services > Outbound > REST Message**
-4. Click **New**
-5. Fill in:
-
-| Field | Value |
-|-------|-------|
-| **Name** | `AI_ServiceDesk_Suggest` |
-| **Endpoint** | `https://sciences-tap-museum-insulation.trycloudflare.com` |
-| **Authentication** | `No Authentication` |
-| **Content Type** | `application/json` |
-
-6. In the **HTTP Methods** related list, click **New**:
-
-| Field | Value |
-|-------|-------|
-| **Name** | `getSuggestions` |
-| **HTTP Method** | `POST` |
-| **Endpoint** | `https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve` |
-
-7. Add **HTTP Request Headers**:
-
-| Name | Value |
-|------|-------|
-| `Content-Type` | `application/json` |
-
-8. Add **HTTP Request Query Parameter**:
-
-| Name | Value |
-|------|-------|
-| `title` | `${title}` |
-| `description` | `${description}` |
-
-9. Set **HTTP Request Body**:
-
-```json
-{
-  "title": "${title}",
-  "description": "${description}",
-  "minConfidenceThreshold": 70
-}
-```
-
-10. Click **Submit**
-
----
-
-### Step 2: Create Script Include
-
-1. In filter navigator, type: `Script Includes`
-2. Navigate to: **System Definition > Script Includes**
-3. Click **New**
-4. Fill in:
+2. In the **filter navigator** (top-left search box), type: `Script Includes`
+3. Click **System Definition > Script Includes**
+4. Click **New** button (top-right corner)
+5. Fill in these fields exactly:
 
 | Field | Value |
 |-------|-------|
 | **Name** | `AIServiceDeskClient` |
-| **API Name** | `global.AIServiceDeskClient` |
+| **API Name** | `global.AIServiceDeskClient` (should auto-populate) |
 | **Description** | `AI Service Desk - Get Suggestions` |
-| **Active** | ☑ Checked |
-| **Client Callable** | ☑ **MUST BE CHECKED** |
+| **Active** | Γÿæ Checked |
+| **Client callable** | Γÿæ **MUST BE CHECKED** |
 | **Accessible from** | `All application scopes` |
-| **Use sandbox script** | ☐ Unchecked |
+| **Use sandbox script** | ΓÿÉ Unchecked |
 
-5. Paste this EXACT code in the **Script** field:
+6. In the **Script** field, paste this EXACT code (no modifications):
 
 ```javascript
 var AIServiceDeskClient = Class.create();
@@ -160,180 +95,35 @@ AIServiceDeskClient.prototype = Object.extendsObject(AbstractAjaxProcessor, {
 });
 ```
 
-6. Click **Submit**
+7. Click **Submit** button
 
-**Note:** If "Client callable" checkbox is missing, look for "Accessible from" field and set it to `All application scopes`.
+### Important Notes for Step 2:
+- If you **don't see "Client callable"** checkbox, look for "Accessible from" field and set it to `All application scopes`
+- Make sure the Script field contains the EXACT code above
+- Do NOT add extra spaces or characters
 
 ---
 
-## Phase 2: Service Portal Widget
+## Step 3: Create Client Script
 
-### Step 3: Create Portal Widget
+The Client Script runs in the browser and calls the Script Include when the agent types.
 
-1. In filter navigator, type: `Widgets`
-2. Navigate to: **Service Portal > Widgets**
-3. Click **New**
-4. Fill in:
+1. In the **filter navigator**, type: `Client Scripts`
+2. Click **System Definition > Client Scripts**
+3. Click **New** button (top-right corner)
+4. Fill in these fields exactly:
 
 | Field | Value |
 |-------|-------|
-| **Name** | `AI Suggestion Panel` |
-| **ID** | `ai-suggestion-panel` |
-| **Active** | ☑ Checked |
-
-5. Add the following files:
-
----
-
-#### HTML Template
-
-Paste this in the **HTML Template** tab:
-
-```html
-<div class="ai-suggestion-panel" ng-if="data.suggestions.length > 0">
-    <div class="panel-header">
-        <h3>AI Suggestions ({{data.suggestions.length}})</h3>
-    </div>
-    <div class="suggestion-card" ng-repeat="s in data.suggestions | limitTo:3">
-        <div class="card-header">
-            <span class="incident-number">{{s.incidentNumber || s.number}}</span>
-            <span class="relevance-score">{{s.relevanceScore * 100 | number:0}}%</span>
-        </div>
-        <div class="card-title">{{s.title || s.short_description}}</div>
-        <div class="card-resolution" ng-if="s.resolution">
-            <strong>Resolution:</strong> {{s.resolution | limitTo:200}}
-        </div>
-        <div class="card-actions">
-            <button class="btn btn-success btn-sm" ng-click="applyResolution(s)">
-                Apply Resolution
-            </button>
-            <button class="btn btn-default btn-sm" ng-click="dismissCard($index)">
-                Dismiss
-            </button>
-        </div>
-    </div>
-</div>
-```
-
----
-
-#### CSS Styles
-
-Paste this in the **CSS** tab:
-
-```css
-.ai-suggestion-panel {
-    margin: 15px 0;
-    padding: 15px;
-    background: #f0f4ff;
-    border: 1px solid #667eea;
-    border-radius: 8px;
-    font-family: 'ServiceNow', sans-serif;
-}
-
-.panel-header h3 {
-    margin: 0 0 15px 0;
-    color: #333;
-    font-size: 16px;
-}
-
-.suggestion-card {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 10px;
-}
-
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
-}
-
-.incident-number {
-    color: #667eea;
-    font-weight: 600;
-    font-size: 12px;
-}
-
-.relevance-score {
-    background: #28a745;
-    color: white;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-}
-
-.card-title {
-    font-weight: 500;
-    margin-bottom: 8px;
-}
-
-.card-resolution {
-    font-size: 13px;
-    color: #555;
-    margin-bottom: 10px;
-}
-
-.card-actions {
-    display: flex;
-    gap: 8px;
-}
-```
-
----
-
-#### Client Script (AngularJS)
-
-Paste this in the **Client Script** tab:
-
-```javascript
-api.controller = function($scope, $timeout) {
-    var c = this;
-    $scope.data = c.data;
-    $scope.data.suggestions = [];
-
-    $scope.applyResolution = function(suggestion) {
-        var resolution = suggestion.resolution || suggestion.resolutionNotes || '';
-        var current = g_form.getValue('resolution_notes') || '';
-        var newResolution = current ? current + '\n\n--- AI Suggested ---\n' + resolution : resolution;
-        g_form.setValue('resolution_notes', newResolution);
-        g_form.setValue('state', '6');
-        g_form.setValue('close_code', 'Closed/Resolved by Caller');
-        g_form.addInfoMessage('AI resolution applied from ' + (suggestion.incidentNumber || suggestion.number));
-    };
-
-    $scope.dismissCard = function(index) {
-        $scope.data.suggestions.splice(index, 1);
-    };
-};
-```
-
-6. Click **Submit**
-
----
-
-## Phase 3: Form Integration
-
-### Step 4: Add Client Script to Incident Form
-
-1. In filter navigator, type: `Client Scripts`
-2. Navigate to: **System Definition > Client Scripts**
-3. Click **New**
-4. Fill in:
-
-| Field | Value |
-|-------|-------|
-| **Name** | `AI_Suggestion_On_Type` |
+| **Name** | `AI - Auto Search Suggestions` |
 | **Table** | `Incident [incident]` |
 | **Type** | `onChange` |
-| **Field name** | `description` |
-| **Active** | ☑ Checked |
-| **UI Type** | `All` |
-| **Global** | ☑ Checked |
+| **Field name** | `short_description` |
+| **Active** | Γÿæ Checked |
+| **UI Type** | `All` (or `Desktop` if All is not available) |
+| **Global** | Γÿæ Checked |
 
-5. Paste this EXACT code in the **Script** field:
+5. In the **Script** field, paste this EXACT code (no modifications):
 
 ```javascript
 function onChange(control, oldValue, newValue, isLoading) {
@@ -467,88 +257,43 @@ function getOrCreateContainer() {
 }
 ```
 
-6. Click **Submit**
+6. Click **Submit** button
 
 ---
 
-### Step 5: Add Widget to Incident Form
+## Step 4: Test the Integration
 
-Choose one option:
+1. **Reload** the Incident form:
+   - Go to **Incidents** in the left menu
+   - Click **Create New** (or open any existing incident)
 
-**Option A: Add via UI Macro on the form header**
-1. Navigate to: **System UI > UI Macros**
-2. Create a new macro that includes the widget
-3. Add it to the Incident form header
+2. In the **Short description** field, type:
+   ```
+   VPN not working
+   ```
 
-**Option B: Add via Agent Workspace widget panel**
-1. Open Agent Workspace
-2. Edit the Incident form layout
-3. Add the `ai-suggestion-panel` widget to the form
+3. Wait **2 seconds**
 
-**Option C: Add via Service Portal page**
-1. Navigate to: **Service Portal > Pages**
-2. Edit the Incident form page
-3. Add the `ai-suggestion-panel` widget
+4. **Expected results:**
+   - A **blue panel** appears with "Searching knowledge base..."
+   - Then it shows "Similar Incident(s) Found" with cards
+   - OR "No similar incidents found. You may proceed with a new ticket."
 
----
-
-## Phase 4: User Flow
-
-```
-User types description
-        |
-        v
-Debounced (1.5s wait)
-        |
-        v
-Script Include calls our API
-        |
-        v
-Returns similar incidents + resolutions
-        |
-        v
-Widget displays suggestion cards
-        |
-        v
-User clicks "Apply Resolution" or "Submit Anyway"
-```
+5. If suggestions appear:
+   - Click **Apply Resolution** to apply the suggested fix
+   - OR click **Dismiss** to close a suggestion card
 
 ---
 
-## Testing
+## Step 5: Verify in System Logs
 
-### Test 1: Verify Backend is Reachable
+If something doesn't work, check the logs:
 
-```bash
-curl https://sciences-tap-museum-insulation.trycloudflare.com/actuator/health
-```
-
-Expected: `{"status":"UP"}`
-
-### Test 2: Verify API Returns Suggestions
-
-```bash
-curl "https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "VPN not working", "maxResults": 3}'
-```
-
-Expected: JSON response with similar incidents
-
-### Test 3: Test in ServiceNow
-
-1. Open ServiceNow: `https://dev440425.service-now.com`
-2. Navigate to: **Incidents > Create New**
-3. In **Description** field, type: `VPN not working`
-4. Wait 2 seconds
-5. **Expected:** Blue panel appears with suggestions
-
-### Test 4: Check Console Logs
-
-1. Press F12 in browser
-2. Click **Console** tab
-3. Look for any red errors
-4. Verify `xmlhttp` calls show 200 status
+1. In the filter navigator, type: `System Logs`
+2. Click **System Logs > All**
+3. In the search bar, type: `[AI Service Desk]`
+4. Press Enter
+5. Look for any error messages
 
 ---
 
@@ -557,69 +302,50 @@ Expected: JSON response with similar incidents
 ### Problem: No blue panel appears
 
 **Check 1: Browser Console**
-1. Press F12
-2. Click Console tab
-3. Look for red errors
-4. Tell me what you see
+1. Press F12 to open DevTools
+2. Click **Console** tab
+3. Type in Short description field
+4. Look for **red error messages**
+5. Tell me what you see
 
 **Check 2: Script Include Settings**
 1. Go to **System Definition > Script Includes**
 2. Open `AIServiceDeskClient`
 3. Verify:
-   - **Active** = ☑
-   - **Client Callable** = ☑
-   - **Accessible from** = `All application scopes`
+   - **Active** = Γÿæ
+   - **Client callable** = Γÿæ (or "Accessible from" = "All application scopes")
+   - **Script** = exactly matches the code in Step 2
 
 **Check 3: Client Script Settings**
 1. Go to **System Definition > Client Scripts**
-2. Open `AI_Suggestion_On_Type`
+2. Open `AI - Auto Search Suggestions`
 3. Verify:
-   - **Active** = ☑
+   - **Active** = Γÿæ
    - **Type** = onChange
-   - **Field name** = description
+   - **Field name** = short_description
    - **Table** = Incident [incident]
 
 ### Problem: "Client callable" checkbox not visible
 
-In some ServiceNow versions:
+In some ServiceNow versions, this checkbox may be hidden. Instead:
 1. Look for **"Accessible from"** field
-2. Set to **"All application scopes"**
+2. Set it to **"All application scopes"**
 3. This has the same effect
 
-### Problem: Cloudflare tunnel URL changed
+### Problem: Panel appears but says "No similar incidents found"
 
-Cloudflare tunnels generate new URLs on restart:
-
-1. Note the new URL from terminal
-2. Update Script Include:
-   - Go to **System Definition > Script Includes**
-   - Open `AIServiceDeskClient`
-   - Find old URL in Script field
-   - Replace with new URL
-   - Click **Update**
+This means the connection works but no matching incidents were found. This is normal if you haven't loaded synthetic data yet.
 
 ### Problem: Error in System Logs
 
-1. Go to **System Logs > All**
-2. Filter by message containing `[AI Service Desk]`
-3. Look for error messages
+Common errors and fixes:
 
----
-
-## Quick Reference
-
-| Item | Value |
-|------|-------|
-| ServiceNow Instance | `https://dev440425.service-now.com` |
-| Tunnel URL | `https://sciences-tap-museum-insulation.trycloudflare.com` |
-| REST Message Name | `AI_ServiceDesk_Suggest` |
-| Script Include Name | `AIServiceDeskClient` |
-| Client Script Name | `AI_Suggestion_On_Type` |
-| Portal Widget Name | `AI Suggestion Panel` |
-| Trigger Field | `description` |
-| Min Characters | 10 |
-| Delay Before Search | 1.5 seconds |
-| API Endpoint | `/api/v1/suggestions/resolve` |
+| Error | Fix |
+|-------|-----|
+| `API returned status 403` | Backend rejected the request - check tunnel URL |
+| `API returned status 500` | Backend error - check backend logs |
+| `GlideAjax failed` | Script Include not client-callable |
+| `JSON parse error` | Backend returned invalid response |
 
 ---
 
@@ -632,11 +358,85 @@ D:\POC\ai-service-desk-knowledge-intelligence-platform\service-desk-ai-platform-
 
 | File | Purpose |
 |------|---------|
-| `01-script-include.js` | Script Include code |
-| `02-client-script.js` | Client Script code |
-| `03-rest-message.json` | REST Message configuration |
-| `widget/html-template.html` | Portal Widget HTML |
-| `widget/css-styles.css` | Portal Widget CSS |
-| `widget/client-script.js` | Portal Widget AngularJS |
-| `README.md` | Quick reference |
-| `SERVICENOW-SETUP-GUIDE.md` | This guide |
+| `01-script-include.js` | Server-side Script Include code |
+| `02-client-script.js` | Browser-side Client Script code |
+| `03-rest-message.json` | REST Message configuration (optional) |
+| `README.md` | Quick reference guide |
+
+---
+
+## Architecture Flow
+
+```
+Agent types in Short description
+        |
+        v
+Client Script (onChange) fires
+        |
+        v
+GlideAjax calls AIServiceDeskClient.getSuggestions()
+        |
+        v
+Script Include calls AI backend via REST
+        |
+        v
+POST https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve
+        |
+        v
+AI backend searches Pinecone vector database
+        |
+        v
+Returns similar incidents with relevance scores
+        |
+        v
+Client Script renders blue suggestion panel
+        |
+        v
+Agent clicks "Apply Resolution" to auto-fill
+```
+
+---
+
+## Quick Reference Card
+
+| Item | Value |
+|------|-------|
+| ServiceNow Instance | `https://dev440425.service-now.com` |
+| Backend Tunnel | `https://sciences-tap-museum-insulation.trycloudflare.com` |
+| Script Include Name | `AIServiceDeskClient` |
+| Client Script Name | `AI - Auto Search Suggestions` |
+| Trigger Field | `short_description` |
+| Min Characters | 10 |
+| Delay Before Search | 1.5 seconds |
+| API Endpoint | `/api/v1/suggestions/resolve` |
+
+---
+
+## When Cloudflare Tunnel Restarts
+
+Cloudflare tunnels generate a **new URL** on each restart. When this happens:
+
+1. Note the new URL from the terminal
+2. Update the Script Include:
+   - Go to **System Definition > Script Includes**
+   - Open `AIServiceDeskClient`
+   - Find the old URL in the Script field
+   - Replace with the new URL
+   - Click **Update**
+3. Test again
+
+---
+
+## Need Help?
+
+If you're stuck, check:
+1. Is the backend running? (`http://localhost:8080/actuator/health`)
+2. Is the tunnel running? (check terminal)
+3. Is the Script Include client-callable?
+4. Are there errors in the Console tab (F12)?
+5. Are there errors in System Logs?
+
+Report any issues with:
+- Screenshot of the Console tab
+- Screenshot of System Logs
+- The exact error message
