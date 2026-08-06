@@ -8,11 +8,13 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @ConfigurationProperties(prefix = "servicenow")
 public class ServiceNowConfig {
-    private String instanceUrl = "https://demo.service-now.com";
-    private String clientId = "ai_knowledge_platform_client";
+    private String instanceUrl;
+    private String clientId = "";
     private String clientSecret = "";
     private String username = "";
     private String password = "";
+    private String authMode = "OAuth2.0 Bearer";
+    private String systemOfRecord = "ServiceNow ITSM & Knowledge";
     private int connectionTimeoutMs = 5000;
     private int readTimeoutMs = 15000;
 }

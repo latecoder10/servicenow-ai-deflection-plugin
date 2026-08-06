@@ -13,7 +13,7 @@ import java.util.List;
 @Component
 public class JwtTokenProvider {
 
-    private static final String SECRET = "EnterpriseServiceDeskAiPlatformSecretKey2026SuperSecureKey!#";
+    private static final String SECRET = System.getenv().getOrDefault("JWT_SECRET", "EnterpriseServiceDeskAiPlatformSecretKey2026SuperSecureKey!#");
     private static final long EXPIRATION_TIME = 86400000; // 24 Hours
 
     private final SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));

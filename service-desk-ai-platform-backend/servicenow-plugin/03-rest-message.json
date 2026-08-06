@@ -1,0 +1,35 @@
+{
+  "name": "AI_ServiceDesk_Suggest",
+  "description": "REST Message to call AI Service Desk backend for incident suggestions",
+  "endpoint": "https://sciences-tap-museum-insulation.trycloudflare.com",
+  "authentication": "No Authentication",
+  "content_type": "application/json",
+  "methods": [
+    {
+      "name": "getSuggestions",
+      "http_method": "POST",
+      "endpoint": "https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "parameters": {},
+      "request_body": "{\n  \"title\": \"${title}\",\n  \"description\": \"${description}\",\n  \"category\": \"${category}\",\n  \"minConfidenceThreshold\": 70\n}",
+      "response": {
+        "type": "application/json",
+        "response_variable": "response"
+      }
+    },
+    {
+      "name": "searchKnowledge",
+      "http_method": "GET",
+      "endpoint": "https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/knowledge/search",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "parameters": {
+        "query": "${query}",
+        "topK": "${topK}"
+      }
+    }
+  ]
+}

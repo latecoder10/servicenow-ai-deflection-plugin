@@ -9,7 +9,6 @@ import com.servicedesk.ai.domain.port.out.LlmPort;
 import com.servicedesk.ai.domain.port.out.VectorDatabasePort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,7 +23,6 @@ public class SuggestionEngineService implements SuggestResolutionUseCase {
     private final LlmPort llmPort;
     private final ConfidenceCalculator confidenceCalculator;
     private final PromptBuilderService promptBuilderService;
-    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public ResolutionSuggestion suggestResolution(Command command) {

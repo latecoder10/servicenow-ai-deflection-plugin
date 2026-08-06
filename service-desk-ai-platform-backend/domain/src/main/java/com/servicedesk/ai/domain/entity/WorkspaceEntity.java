@@ -13,7 +13,7 @@ import lombok.*;
 @AllArgsConstructor
 public class WorkspaceEntity extends AuditableEntity {
 
-    @Column(name = "name", nullable = false)
+    @Column(name = "name", nullable = false, length = 100)
     private String name;
 
     @Column(name = "description", columnDefinition = "TEXT")

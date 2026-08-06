@@ -9,6 +9,6 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "ai.embedding")
 public class EmbeddingConfig {
     private String provider = "GEMINI";
-    private String modelName = "text-embedding-005";
+    private String modelName = "gemini-embedding-001";
     private int dimension = 1024;
 }

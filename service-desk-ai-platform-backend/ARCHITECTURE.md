@@ -1,110 +1,119 @@
-# Enterprise Architecture & Design Specifications
+# Enterprise AI Knowledge Synchronization Platform - Architecture Specifications
 
-## 1. System Context Diagram (PlantUML)
+## 1. Enterprise Synchronization High-Level Context (PlantUML)
 
 ```plantuml
 @startuml SystemContext
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
 
-Person(user, "Employee / Self-Service User", "Submits IT issues or queries via ServiceNow portal")
-System(platform, "AI Service Desk Platform", "Spring Boot 3.5 Hexagonal Architecture Platform")
-System_Ext(servicenow, "ServiceNow Enterprise", "ITSAM Incident & Knowledge API")
-System_Ext(pinecone, "Pinecone Vector DB", "768-dim Vector Embeddings Index")
-System_Ext(llm, "Google AI / Gemini 3.6 Flash", "Generative LLM & Reranker Engine")
+Person(user, "Employee / Helpdesk Agent", "Creates incidents or searches resolutions")
+System(platform, "Enterprise AI Knowledge Synchronization Platform", "Spring Boot 3.4 Multi-Module Platform")
+System_Ext(servicenow, "ServiceNow Enterprise", "System of Record (Incidents, KB Articles, Attachments Metadata)")
+System_Ext(pinecone, "Pinecone Vector DB", "Semantic Knowledge Index ('servicedesk-knowledge')")
+System_Ext(llm, "Google AI / Gemini 3.6 Flash", "Generative RAG & Deflection Engine")
+System_Ext(postgres, "PostgreSQL Database", "Operational Storage (Connector Configs, Sync History, Audit Logs)")
 
-Rel(user, platform, "1. Types issue before ticket submission", "HTTPS / REST")
-Rel(platform, pinecone, "2. Query similarity search Top-K", "gRPC / REST")
-Rel(platform, llm, "3. Cross-encoder rerank & RAG resolution synthesis", "Spring AI REST")
-Rel(platform, user, "4. Return step-by-step resolution & confidence score", "JSON Response")
-Rel(platform, servicenow, "5. Create incident IF unsolved (Deflection Fail)", "OAuth2 REST API")
+Rel(servicenow, platform, "1. Synchronize resolved incidents & KB articles (Incremental)", "OAuth2 REST / HTTPS")
+Rel(platform, postgres, "2. Store sync job status, connector configs & metadata references", "JDBC / JPA")
+Rel(platform, pinecone, "3. Upsert semantic embeddings & metadata tags", "REST / gRPC")
+Rel(user, platform, "4. Pre-ticket query for instant resolution", "REST API")
+Rel(platform, pinecone, "5. Metadata-filtered vector similarity search", "gRPC")
+Rel(platform, llm, "6. Synthesize step-by-step deflection response", "REST / Spring AI")
+Rel(platform, user, "7. Real-time AI suggestion with confidence score & references", "JSON Response")
+Rel(platform, servicenow, "8. Fetch attachment binary on-demand via proxy", "Attachment REST API")
 @enduml
 ```
 
 ---
 
-## 2. Hexagonal Architecture & Package Layout
+## 2. Connector-Based Architecture Layout
 
 ```
                                 +-----------------------------------+
                                 |            API LAYER              |
-                                |  (SuggestionController, OpenApi) |
+                                | (ConnectorController, ServiceNow) |
                                 +-----------------+-----------------+
                                                   |
                                                   v
                                 +-----------------+-----------------+
                                 |        APPLICATION LAYER          |
-                                | (SuggestionEngineService, CQRS)   |
+                                |  (AsyncKnowledgeSyncService)      |
                                 +-----------------+-----------------+
                                                   |
                                                   v
                                 +-----------------+-----------------+
-                                |           DOMAIN LAYER            |
-                                |  (Entities, ValueObjects, Ports) |
+                                |        CONNECTOR REGISTRY         |
+                                |   (KnowledgeConnector Interface)  |
                                 +--+--------------+--------------+--+
                                    |              |              |
            +-----------------------+              |              +-----------------------+
            |                                      |                                      |
            v                                      v                                      v
 +----------+----------+                +----------+----------+                +----------+----------+
-| INTEGRATION/PINECONE|                | INTEGRATION/SERVICENOW|                |   INTEGRATION/LLM    |
-| VectorDatabasePort  |                |   ServiceNowPort    |                | LlmPort & Embeddings |
+|  ServiceNowConnector|                |    JiraConnector    |                | ConfluenceConnector |
+|  (Resolved Incidents|                |  (Future Connector) |                |  (Future Connector) |
+|   & KB Articles)    |                |                     |                |                     |
 +---------------------+                +---------------------+                +---------------------+
 ```
 
 ---
 
-## 3. Primary AI Deflection Sequence Diagram (PlantUML)
+## 3. Knowledge Extraction & Synchronization Pipeline (PlantUML)
 
 ```plantuml
-@startuml PrimaryDeflectionFlow
+@startuml SyncPipelineFlow
 autonumber
-actor Employee as "Employee"
-participant Controller as "SuggestionController\n[API]"
-participant Engine as "SuggestionEngineService\n[Application]"
+participant ServiceNow as "ServiceNow API\n[System of Record]"
+participant SyncEngine as "AsyncKnowledgeSyncService\n[Application]"
+participant Connector as "ServiceNowKnowledgeConnector\n[Connector]"
 participant Embedder as "SpringAiEmbeddingAdapter\n[LLM]"
-participant Pinecone as "PineconeVectorAdapter\n[Vector DB]"
-participant Reranker as "RerankingEngine\n[LLM]"
-participant Gemini as "SpringAiLlmAdapter\n[Gemini 3.6]"
-participant ServiceNow as "ServiceNowRestAdapter\n[Integration]"
+participant Pinecone as "PineconeVectorAdapter\n[Pinecone DB]"
+participant Postgres as "PostgreSQL\n[Operational Store]"
 
-Employee -> Controller: POST /api/v1/suggestions/resolve
-Controller -> Engine: suggestResolution(command)
-Engine -> Embedder: generateEmbedding(queryText)
-Embedder --> Engine: List<Float> (768-dim vector)
+SyncEngine -> Connector: synchronize(request)
+Connector -> ServiceNow: GET /api/now/table/incident?sysparm_query=state=6^sys_updated_on>=...
+ServiceNow --> Connector: List<Incident> (Resolved Incidents)
+Connector -> ServiceNow: GET /api/now/table/kb_knowledge?sysparm_query=workflow_state=published^sys_updated_on>=...
+ServiceNow --> Connector: List<KnowledgeRecord> (Published Articles)
 
-Engine -> Pinecone: similaritySearch(collection, queryVector, topK=10)
-Pinecone --> Engine: List<KnowledgeChunk> (Candidate Matches)
-
-Engine -> Reranker: rerankChunks(queryText, candidateChunks, topN=5)
-Reranker --> Engine: List<KnowledgeChunk> (Cross-Encoder Ranked)
-
-Engine -> Gemini: generateResolution(userPrompt, topChunks)
-Gemini --> Engine: ResolutionSuggestion (Step-by-step resolution)
-
-alt Confidence Score >= 75% (Deflection Successful)
-    Engine --> Controller: ResolutionSuggestion (Deflected: true)
-    Controller --> Employee: 200 OK + Instant Resolution
-else Confidence Score < 75% (Deflection Failed)
-    Engine -> ServiceNow: createIncident(incident)
-    ServiceNow --> Engine: Incident (sys_id & INC number)
-    Engine --> Controller: ResolutionSuggestion (Deflected: false, Ticket Created)
-    Controller --> Employee: 200 OK + Created ServiceNow Incident Number
+loop For Each Knowledge Record
+    Connector -> Connector: Extract Fields (Short Desc, Resolution Notes, Comments, Category, Priority)
+    Connector -> ServiceNow: GET /api/now/table/sys_attachment?table_sys_id=...
+    ServiceNow --> Connector: Attachment Metadata Reference (Filename, Size, SysId)
+    
+    Connector -> Embedder: generateEmbedding(textPayload)
+    Embedder --> Connector: List<Float> Vector (768-dim)
+    
+    Connector -> Pinecone: upsertVector(vectorId, embedding, metadataFilterMap)
+    Pinecone --> Connector: 200 OK
 end
+
+Connector -> Postgres: Save SyncJobEntity (Counts, Status, Execution Time)
+Postgres --> SyncEngine: Job Saved
 @enduml
 ```
 
 ---
 
-## 4. Resilience4j Circuit Breaker & Fallback Architecture
+## 4. Pinecone Index & Metadata Filtering Strategy
 
-- **Circuit Breaker States**: `CLOSED` -> `OPEN` on 50% failure rate over sliding window of 10 requests.
-- **Fallback Behavior**: When ServiceNow REST API is unresponsive, incidents are buffered into a local persistent queue (`sys_id_queued_offline`) and automatically retried once connection health recovers.
-- **Rate Limiting**: Configured with Token Bucket algorithm limiting peak burst to 100 requests/sec per client API key.
+- **Single Primary Index**: `servicedesk-knowledge`
+- **Avoid Year-based Namespaces**: Namespaces are reserved strictly for Tenant, Workspace, or Environment isolation.
+- **Metadata Filters Used**:
+  - `workspace`: e.g. "Enterprise IT"
+  - `category`: e.g. "Software", "Network", "Identity & Access"
+  - `department`: e.g. "IT Infrastructure", "Security"
+  - `priority`: e.g. "1 - Critical", "2 - High", "3 - Moderate"
+  - `year`: e.g. "2026"
+  - `documentType`: `INCIDENT` or `KNOWLEDGE_ARTICLE`
+  - `connectorType`: `SERVICENOW`
 
 ---
 
-## 5. Security & Audit Logging Model
+## 5. Storage Principles
 
-- **Authentication**: Stateless JWT token header (`Authorization: Bearer <token>`).
-- **Authorization**: Role-Based Access Control (`ROLE_ENTERPRISE_USER`, `ROLE_KNOWLEDGE_ADMIN`).
-- **Audit Trails**: Aspect-Oriented Programming (`AuditLogAspect`) wraps every application service call, recording correlation IDs, execution durations, user emails, and success/failure status in PostgreSQL audit tables.
+| Component | Storage Role | Policy |
+|---|---|---|
+| **ServiceNow** | System of Record | Holds full Incidents, Articles, Binary Attachments (PDF, Word, Images) |
+| **PostgreSQL** | Operational Database | Stores Connection Configs, OAuth Tokens, Sync Jobs, Metadata References, Audit Logs |
+| **Pinecone** | Semantic AI Index | Stores Vectors, Chunk Text, Metadata Filter Tags. NO Binary files or whole PDFs |

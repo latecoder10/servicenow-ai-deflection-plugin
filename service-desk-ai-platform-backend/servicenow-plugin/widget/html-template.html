@@ -1,0 +1,80 @@
+<!-- 
+  AI Suggestion Panel - HTML Template
+  
+  Service Portal Widget Name: ai-suggestion-panel
+  Table: incident (optional, works on any page)
+  
+  This widget displays AI-powered resolution suggestions
+  when a user types an incident description.
+-->
+<div class="ai-suggestion-panel" ng-show="data.showPanel">
+  
+  <!-- Header -->
+  <div class="ai-panel-header">
+    <div class="ai-panel-title">
+      <i class="fa fa-magic"></i>
+      AI Resolution Suggestions
+    </div>
+    <button class="ai-panel-close" ng-click="data.showPanel = false">
+      <i class="fa fa-times"></i>
+    </button>
+  </div>
+
+  <!-- Loading State -->
+  <div class="ai-panel-loading" ng-show="data.loading">
+    <i class="fa fa-spinner fa-spin"></i>
+    Searching knowledge base...
+  </div>
+
+  <!-- No Results -->
+  <div class="ai-panel-empty" ng-show="!data.loading && data.suggestions.length === 0 && data.searched">
+    <i class="fa fa-search"></i>
+    <p>No similar incidents found in knowledge base.</p>
+    <p class="ai-panel-hint">Try submitting a new ticket.</p>
+  </div>
+
+  <!-- Suggestion Cards -->
+  <div class="ai-panel-results" ng-show="!data.loading && data.suggestions.length > 0">
+    <div class="ai-panel-count">
+      Found {{data.suggestions.length}} similar resolved incident(s)
+    </div>
+    
+    <div class="ai-suggestion-card" ng-repeat="suggestion in data.suggestions">
+      <div class="ai-card-header">
+        <span class="ai-card-number">{{suggestion.incidentNumber || suggestion.documentId}}</span>
+        <span class="ai-card-score" ng-style="{'background': getScoreColor(suggestion.relevanceScore)}">
+          {{(suggestion.relevanceScore * 100) | number:0}}% match
+        </span>
+      </div>
+      
+      <div class="ai-card-title">{{suggestion.title || suggestion.textContent}}</div>
+      
+      <div class="ai-card-resolution" ng-show="suggestion.resolution">
+        <strong>Resolution:</strong>
+        <p>{{suggestion.resolution}}</p>
+      </div>
+
+      <div class="ai-card-text" ng-show="suggestion.textContent && !suggestion.resolution">
+        <strong>Details:</strong>
+        <p>{{suggestion.textContent | limitTo:300}}</p>
+      </div>
+
+      <div class="ai-card-actions">
+        <button class="ai-btn-use" ng-click="useResolution(suggestion)">
+          <i class="fa fa-check"></i> Use This Resolution
+        </button>
+        <button class="ai-btn-dismiss" ng-click="dismissSuggestion($index)">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Submit Anyway -->
+  <div class="ai-panel-footer" ng-show="!data.loading && data.searched">
+    <button class="ai-btn-submit" ng-click="submitNewTicket()">
+      <i class="fa fa-paper-plane"></i> Submit New Ticket Anyway
+    </button>
+  </div>
+
+</div>
