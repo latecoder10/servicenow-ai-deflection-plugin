@@ -18,19 +18,22 @@ public class ServiceNowSyncScheduler {
 
     private final SyncServiceNowUseCase syncServiceNowUseCase;
 
-    @Value("${scheduler.servicenow.cron:0 */15 * * * *}")
+    @Value("${scheduler.servicenow.cron:0 0 2 * * ?}")
     private String cron;
 
-    @Value("${scheduler.servicenow.sync-limit:100}")
+    @Value("${scheduler.servicenow.sync-limit:500}")
     private int syncLimit;
 
-    @Scheduled(cron = "${scheduler.servicenow.cron:0 */15 * * * *}")
+    @Value("${scheduler.servicenow.lookback-seconds:86400}")
+    private long lookbackSeconds;
+
+    @Scheduled(cron = "${scheduler.servicenow.cron:0 0 2 * * ?}")
     public void executeScheduledServiceNowSync() {
-        log.info("[Scheduler] Triggering periodic ServiceNow sync (limit={})...", syncLimit);
+        log.info("[Scheduler] Triggering periodic ServiceNow sync (limit={}, lookback={}s)...", syncLimit, lookbackSeconds);
         try {
             SyncServiceNowUseCase.Command command = new SyncServiceNowUseCase.Command(
                 "ALL",
-                Instant.now().minusSeconds(900), // last 15 min
+                Instant.now().minusSeconds(lookbackSeconds),
                 false
             );
             SyncServiceNowUseCase.Result result = syncServiceNowUseCase.sync(command);

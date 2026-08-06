@@ -95,8 +95,9 @@ servicenow:
 scheduler:
   servicenow:
     enabled: ${SCHEDULER_SERVICENOW_ENABLED:true}
-    cron: "0 */15 * * * *"   # every 15 minutes
-    sync-limit: 100          # max records per sync run
+    cron: ${SCHEDULER_SERVICENOW_CRON:0 0 2 * * ?}   # daily at 2 AM
+    sync-limit: ${SCHEDULER_SERVICENOW_SYNC_LIMIT:500} # max records per sync run
+    lookback-seconds: ${SCHEDULER_SERVICENOW_LOOKBACK_SECONDS:86400} # 24 hours (1 day)
 
 # ──────────────────────── RESILIENCE4J ────────────────────────
 resilience4j:
