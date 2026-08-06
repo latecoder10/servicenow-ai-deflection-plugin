@@ -1,161 +1,280 @@
 # AI Service Desk Knowledge Intelligence Platform
 
-> **Enterprise Pre-Incident AI Deflection Engine & ServiceNow Knowledge Platform**
-> Built with Java 21, Spring Boot 3.5+, Spring AI, Pinecone Vector Database, Google Gemini 3.6 Flash, and Clean Hexagonal Architecture.
+> **Backend API** that sits between employees and ServiceNow. When someone describes an IT issue (VPN drops, password lockouts, etc.), the platform searches its knowledge base using AI, generates a resolution, and deflects the ticket if confidence is high enough.
 
 ---
 
-## Quick Start (Local Development)
+## What This Does (In Plain English)
 
-### One-Click Setup
-
-```bash
-# Step 1: Setup (creates DB, builds project)
-./setup.sh          # Git Bash / Linux / Mac
-setup.bat           # Windows CMD
-
-# Step 2: Run (Liquibase auto-runs on startup)
-mvn spring-boot:run -pl api -DskipTests
+```
+Employee types issue  -->  AI searches knowledge base  -->  Generates resolution  -->  Deflects ticket (saves ~$15/incident)
 ```
 
-### Prerequisites
+1. Employee describes their problem in the ServiceNow portal
+2. Backend vectorizes the query and searches Pinecone (vector DB) for similar resolved incidents and knowledge articles
+3. Gemini LLM generates a step-by-step fix with code/CLI snippets
+4. If confidence >= 75%, the issue is resolved without creating a ServiceNow ticket
+5. If confidence is low, a real ticket is created and assigned to an agent
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Java | 21+ | Runtime & Compilation |
-| Maven | 3.9+ | Build & Dependency Management |
-| PostgreSQL | 16+ | Relational Database |
-| psql | (bundled with PostgreSQL) | Database CLI |
+---
 
-### Manual Steps (if not using setup script)
+## Prerequisites
+
+| Tool | Version | Why |
+|------|---------|-----|
+| **Java** | 17+ | Runtime (project targets Java 17) |
+| **Maven** | 3.9+ | Build tool |
+| **PostgreSQL** | 16+ | Database for metadata, audit logs, sync jobs |
+| **psql** | (comes with PostgreSQL) | CLI to create the database |
+
+You also need API keys for:
+- **Google Gemini** (LLM + embeddings) -- get from [Google AI Studio](https://aistudio.google.com/apikey)
+- **Pinecone** (vector search) -- get from [Pinecone Console](https://app.pinecone.io/)
+- **ServiceNow** instance (optional, for full functionality)
+
+---
+
+## Quick Setup (3 Steps)
+
+### Step 1: Copy the environment template
 
 ```bash
-# 1. Copy environment template
 cp .env.example .env.local
+```
 
-# 2. Create database (Liquibase handles schema automatically)
+Open `.env.local` and fill in your real values:
+
+```bash
+# Required: Your Gemini API key
+GEMINI_API_KEY=your-gemini-key-here
+
+# Required: Your Pinecone credentials
+AI_PINECONE_API_KEY=your-pinecone-key
+AI_PINECONE_HOST=your-index.svc.aped-4627-b74a.pinecone.io
+
+# Database (defaults work if PostgreSQL is local with password "root")
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/servicedesk_ai
+SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_PASSWORD=root
+
+# ServiceNow (optional -- needed for real ticket deflection)
+SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com
+SERVICENOW_CLIENT_ID=your-client-id
+SERVICENOW_CLIENT_SECRET=your-client-secret
+SERVICENOW_USERNAME=your-username
+SERVICENOW_PASSWORD=your-password
+```
+
+### Step 2: Create the database
+
+```bash
 psql -h localhost -p 5432 -U postgres -c "CREATE DATABASE servicedesk_ai;"
+```
 
-# 3. Build & Run
+> **Note:** Liquibase runs automatically on startup and creates all tables. You don't need to run any SQL manually.
+
+### Step 3: Build and run
+
+```bash
+# Build all modules
 mvn clean install -DskipTests
-mvn spring-boot:run -pl api -DskipTests
 
-# 4. Verify
+# Run the application (dev profile is active by default -- no auth required)
+mvn spring-boot:run -pl modules/api -DskipTests
+```
+
+That's it. The API starts on `http://localhost:8080`.
+
+---
+
+## Verify It's Working
+
+```bash
+# Health check
 curl http://localhost:8080/api/v1/health
+
+# Swagger UI (interactive API docs)
+# Open in browser: http://localhost:8080/swagger-ui.html
+
+# Prometheus metrics
+curl http://localhost:8081/actuator/prometheus
 ```
 
 ---
 
-## 🏛️ Executive Summary
+## Environment Variables Reference
 
-The **AI Service Desk Knowledge Intelligence Platform** sits directly between employee self-service portals and ServiceNow. When an employee starts typing an IT issue (e.g., VPN drops, password lockouts, OWA errors), the platform executes a real-time Retrieval-Augmented Generation (RAG) pipeline:
-
-1. **Embedding Generation**: Vectorizes the user query via Spring AI.
-2. **Pinecone Vector Search**: Performs similarity search across Knowledge Articles, Resolved Incidents, and Runbooks.
-3. **Cross-Encoder Reranking**: Re-ranks the top candidate chunks for maximum precision.
-4. **Gemini LLM Synthesis**: Formulates a verified step-by-step resolution with code/CLI snippets.
-5. **Confidence Evaluation**: Calculates a multi-factor score. If confidence exceeds the threshold (e.g. 75%), the issue is resolved immediately **without creating a ticket**, saving an average of $15.50 per deflected incident.
-
----
-
-## 🛠️ Tech Stack & Dependencies
-
-| Layer | Technology |
-|---|---|
-| **Language & JDK** | Java 21 LTS |
-| **Framework** | Spring Boot 3.4.2 / 3.5.0, Spring AI 1.0.0-M6 |
-| **Architecture** | Hexagonal Architecture, Clean Architecture, DDD, CQRS |
-| **Vector DB** | Pinecone Vector Database (768-dim Text-Embedding-004) |
-| **LLM Provider** | Google AI / Gemini 3.6 Flash |
-| **Integration** | ServiceNow REST API v2, OAuth2, Resilience4j Circuit Breaker |
-| **Document Loader** | Apache Tika (PDF, Word, Excel, CSV, Markdown, ZIP) |
-| **Security** | Spring Security, JJWT (JWT Bearer Tokens), Rate Limiting |
-| **Observability** | Spring Boot Actuator, Micrometer, Prometheus, Grafana |
-| **Testing** | JUnit 5, Mockito, Testcontainers, Spring Boot Test |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | Yes | - | Google Gemini API key for LLM and embeddings |
+| `AI_PINECONE_API_KEY` | Yes | - | Pinecone vector database API key |
+| `AI_PINECONE_HOST` | Yes | - | Pinecone index host URL |
+| `SPRING_DATASOURCE_URL` | No | `jdbc:postgresql://localhost:5432/servicedesk_ai` | PostgreSQL connection URL |
+| `SPRING_DATASOURCE_USERNAME` | No | `postgres` | PostgreSQL username |
+| `SPRING_DATASOURCE_PASSWORD` | No | `changeme` | PostgreSQL password |
+| `SERVICENOW_INSTANCE_URL` | No | - | ServiceNow instance URL (e.g. `https://dev12345.service-now.com`) |
+| `SERVICENOW_CLIENT_ID` | No | - | ServiceNow OAuth2 client ID |
+| `SERVICENOW_CLIENT_SECRET` | No | - | ServiceNow OAuth2 client secret |
+| `SERVICENOW_USERNAME` | No | - | ServiceNow admin username |
+| `SERVICENOW_PASSWORD` | No | - | ServiceNow admin password |
+| `SCHEDULER_SERVICENOW_ENABLED` | No | `true` | Enable/disable auto-sync scheduler |
+| `SCHEDULER_SERVICENOW_CRON` | No | `0 0 2 * * ?` | Cron for ServiceNow sync (default: 2 AM daily) |
 
 ---
 
-## 📁 Repository & Multi-Module Structure
+## API Endpoints
 
-```
-service-desk-ai-platform/
-├── pom.xml                     # Maven Parent POM
-├── common/                     # Common exceptions, ProblemDetails RFC 7807, CorrelationContext
-├── domain/                     # Entities (Incident, KnowledgeChunk), Value Objects, Domain Events, Ports
-├── application/                # Application Services, CQRS Use Cases, Confidence Calculator
-├── knowledge-loader/           # Apache Tika Parsers, SlidingWindowChunker, Chunking Engine
-├── integration/
-│   ├── pinecone/              # Pinecone Vector Adapter & Upsert/Search
-│   ├── servicenow/            # ServiceNow REST Client, OAuth2, Circuit Breaker
-│   └── llm/                   # Spring AI Gemini Adapter, Embedding Service, Reranker
-├── analytics/                  # Deflection metrics, ROI calculation, Micrometer metrics
-├── security/                   # Spring Security, JWT Filter, Token Provider
-├── infrastructure/             # AOP Audit Logger, Scheduled ServiceNow Sync, Resilience4j
-└── api/                        # REST Controllers, DTOs, OpenAPI 3.0 Specs, Application Entry Point
-```
+All endpoints are under `/api/v1`. The `dev` profile disables authentication, so you can call them directly.
 
----
+### Core Endpoints
 
-## 🚀 Enterprise Deployment Guide
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/health` | Platform health check |
+| `POST` | `/api/v1/suggestions/resolve` | AI resolution for an incident description |
+| `POST` | `/api/v1/knowledge/load-synthetic` | Load demo data into ServiceNow |
+| `GET` | `/api/v1/knowledge/search?query=...` | Semantic search across knowledge base |
+| `GET` | `/api/v1/knowledge/records` | List synchronized knowledge records |
+| `POST` | `/api/v1/knowledge/records/{sysId}/reindex` | Re-index a record in Pinecone |
 
-### Option 1: Docker Compose (Local / Dev Environment)
+### ServiceNow Integration
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/servicenow/health` | Test ServiceNow connection |
+| `POST` | `/api/v1/servicenow/sync/incremental` | Trigger incremental sync |
+| `POST` | `/api/v1/servicenow/incidents` | Create a ServiceNow incident |
+
+### File Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/files/upload` | Upload a document for async ingestion |
+| `GET` | `/api/v1/files` | List all uploaded documents |
+| `GET` | `/api/v1/files/{id}/download` | Download a stored document |
+
+### Analytics & Monitoring
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/analytics/deflection` | Deflection rate and ROI metrics |
+| `GET` | `/api/v1/analytics/dashboard` | Full executive dashboard |
+| `GET` | `/api/v1/pipeline/jobs` | Recent sync job history |
+
+### Example: Generate an AI Resolution
 
 ```bash
-# Clone repository
-git clone https://github.com/enterprise/service-desk-ai-platform.git
-cd service-desk-ai-platform
-
-# Export environment credentials
-export GEMINI_API_KEY="your-gemini-api-key"
-export PINECONE_API_KEY="your-pinecone-api-key"
-export SERVICENOW_INSTANCE_URL="https://your-instance.service-now.com"
-
-# Launch multi-container stack (App + Postgres + Redis + Prometheus + Grafana)
-docker-compose up -d --build
-
-# Verify container health
-docker-compose ps
-```
-
-### Option 2: Production Build & Deployment
-
-```bash
-# Compile and package multi-module project with Java 21
-mvn clean package -DskipTests
-
-# Run JAR directly
-java -XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -jar api/target/api-2.5.0-SNAPSHOT.jar
+curl -X POST http://localhost:8080/api/v1/suggestions/resolve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "VPN keeps disconnecting",
+    "description": "My VPN connection drops every 10 minutes. I have tried reconnecting but it keeps happening.",
+    "callerEmail": "employee@company.com",
+    "userDepartment": "IT",
+    "category": "Network",
+    "minConfidenceThreshold": 0.75
+  }'
 ```
 
 ---
 
-## 🧪 Testing Strategy
+## Project Structure
 
-Run unit and integration tests using Maven:
+```
+service-desk-ai-platform-backend/
+├── pom.xml                          # Parent POM (multi-module)
+├── .env.example                     # Environment template
+├── .env.local                       # Your local secrets (git-ignored)
+├── docker-compose.yml               # Postgres + Redis + Prometheus + Grafana
+├── setup.sh / setup.bat             # One-click setup scripts
+├── openapi.yaml                     # OpenAPI 3.0 spec
+├── postman/                         # Postman collection
+├── servicenow-plugin/               # ServiceNow portal widget + scripts
+│
+├── modules/
+│   ├── api/                         # REST controllers + Spring Boot entry point
+│   ├── application/                 # Business logic services (suggestion engine, sync, confidence)
+│   ├── domain/                      # Entities, models, repository interfaces
+│   ├── common/                      # Exceptions, base models, correlation context
+│   ├── knowledge-loader/            # Document parsers (Tika), chunking engine
+│   ├── integration/
+│   │   ├── pinecone/                # Vector DB adapter
+│   │   ├── servicenow/              # ServiceNow REST client + OAuth2
+│   │   └── llm/                     # Gemini LLM + embedding adapters
+│   ├── analytics/                   # Deflection metrics, ROI calculation
+│   ├── security/                    # JWT auth, Spring Security config
+│   └── infrastructure/              # AOP audit logger, ServiceNow sync scheduler
+│
+└── infra/                           # Prometheus config
+```
+
+---
+
+## Docker Compose (Optional)
+
+If you prefer containers for infrastructure services (Postgres, Redis, Prometheus, Grafana):
 
 ```bash
-# Run all unit tests with Mockito & JUnit 5
+# Set your API keys
+export GEMINI_API_KEY=your-key
+export AI_PINECONE_API_KEY=your-key
+export AI_PINECONE_HOST=your-host
+
+# Start infrastructure
+docker-compose up -d postgres redis prometheus grafana
+
+# Then run the Java app locally (it connects to the containerized Postgres)
+mvn spring-boot:run -pl modules/api -DskipTests
+```
+
+Services:
+- **PostgreSQL**: `localhost:5432`
+- **Redis**: `localhost:6379`
+- **Prometheus**: `localhost:9090`
+- **Grafana**: `localhost:3001` (password: `admin`)
+
+---
+
+## Running Tests
+
+```bash
+# Unit tests
 mvn test
 
-# Run integration tests with Testcontainers
+# Integration tests (requires Docker for Testcontainers)
 mvn verify -P integration-test
 ```
 
 ---
 
-## 📊 Endpoints & Verification
+## ServiceNow Plugin (Optional)
 
-- **Interactive Swagger UI**: `http://localhost:8080/swagger-ui.html`
-- **Prometheus Metrics**: `http://localhost:8081/actuator/prometheus`
-- **Health Endpoint**: `http://localhost:8080/api/v1/health`
+The `servicenow-plugin/` directory contains everything needed to deploy the AI widget into your ServiceNow instance:
 
-```json
-{
-  "status": "healthy",
-  "timestamp": "2026-08-02T23:09:40Z",
-  "service": "AI Service Desk Knowledge Intelligence Platform",
-  "version": "2.5.0-SNAPSHOT",
-  "pineconeStatus": "connected",
-  "servicenowStatus": "synced"
-}
-```
+- `01-script-include.js` -- Server-side Script Include
+- `02-client-script.js` -- Client Script for the ticket form
+- `03-rest-message.json` -- REST Message configuration
+- `widget/` -- Service Portal Widget (HTML/SCSS/Server Script/Client Script)
+- `SERVICENOW-SETUP-GUIDE.md` -- Step-by-step ServiceNow deployment guide
+
+---
+
+## Troubleshooting
+
+**Application won't start -- "Connection refused" to PostgreSQL**
+- Make sure PostgreSQL is running: `pg_isready -h localhost -p 5432`
+- Check your password in `.env.local` matches your PostgreSQL password
+
+**"GEMINI_API_KEY is blank" warning**
+- Fill in `GEMINI_API_KEY` in your `.env.local` file
+
+**Pinecone connection errors**
+- Verify `AI_PINECONE_HOST` matches your index's host (from Pinecone Console)
+- Make sure the index dimension is set to `1024` (matches `gemini-embedding-001`)
+
+**Port 8080 already in use**
+- Change the port: add `SERVER_PORT=8081` to `.env.local`
+
+**ServiceNow 401 Unauthorized**
+- Verify `SERVICENOW_CLIENT_ID` and `SERVICENOW_CLIENT_SECRET` are correct
+- Make sure the OAuth2 application is active in ServiceNow
