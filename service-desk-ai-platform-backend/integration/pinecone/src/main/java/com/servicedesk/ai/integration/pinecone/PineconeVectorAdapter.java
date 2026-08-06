@@ -1,6 +1,8 @@
 package com.servicedesk.ai.integration.pinecone;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.servicedesk.ai.domain.AppConstants;
+import com.servicedesk.ai.domain.model.DocumentMetadata;
 import com.servicedesk.ai.domain.model.KnowledgeChunk;
 import com.servicedesk.ai.domain.port.out.VectorDatabasePort;
 import com.servicedesk.ai.integration.pinecone.config.PineconeConfig;
@@ -17,10 +19,6 @@ import java.util.*;
 @Component
 @RequiredArgsConstructor
 public class PineconeVectorAdapter implements VectorDatabasePort {
-
-    private static final int BATCH_SIZE = 96;
-    private static final int MAX_RETRIES = 3;
-    private static final long INITIAL_BACKOFF_MS = 1000;
 
     private final PineconeIndexResolver indexResolver;
     private final PineconeConfig pineconeConfig;
@@ -41,25 +39,31 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
         }
 
         int totalUpserted = 0;
-        int totalBatches = (chunks.size() + BATCH_SIZE - 1) / BATCH_SIZE;
+        int totalBatches = (chunks.size() + AppConstants.PINECONE_BATCH_SIZE - 1) / AppConstants.PINECONE_BATCH_SIZE;
 
         for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-            int start = batchIndex * BATCH_SIZE;
-            int end = Math.min(start + BATCH_SIZE, chunks.size());
+            int start = batchIndex * AppConstants.PINECONE_BATCH_SIZE;
+            int end = Math.min(start + AppConstants.PINECONE_BATCH_SIZE, chunks.size());
             List<KnowledgeChunk> batch = chunks.subList(start, end);
 
             List<Map<String, Object>> vectors = new ArrayList<>();
             for (KnowledgeChunk chunk : batch) {
                 Map<String, Object> vector = new LinkedHashMap<>();
                 vector.put("id", chunk.getDocumentId() + "-" + chunk.getChunkIndex());
-                vector.put("text", chunk.getTextContent());
+                if (chunk.getVectorEmbedding() != null && !chunk.getVectorEmbedding().isEmpty()) {
+                    vector.put("values", chunk.getVectorEmbedding());
+                }
+                
                 Map<String, String> metadata = new LinkedHashMap<>();
-                metadata.put("documentId", chunk.getDocumentId());
-                metadata.put("chunkIndex", String.valueOf(chunk.getChunkIndex()));
+                if (chunk.getTextContent() != null) {
+                    metadata.put(AppConstants.META_TEXT, chunk.getTextContent());
+                }
+                metadata.put(AppConstants.META_DOCUMENT_ID, chunk.getDocumentId());
+                metadata.put(AppConstants.META_CHUNK_INDEX, String.valueOf(chunk.getChunkIndex()));
                 if (chunk.getMetadata() != null) {
-                    if (chunk.getMetadata().title() != null) metadata.put("title", chunk.getMetadata().title());
-                    if (chunk.getMetadata().department() != null) metadata.put("department", chunk.getMetadata().department());
-                    if (chunk.getMetadata().category() != null) metadata.put("category", chunk.getMetadata().category());
+                    if (chunk.getMetadata().title() != null) metadata.put(AppConstants.META_TITLE, chunk.getMetadata().title());
+                    if (chunk.getMetadata().department() != null) metadata.put(AppConstants.META_DEPARTMENT, chunk.getMetadata().department());
+                    if (chunk.getMetadata().category() != null) metadata.put(AppConstants.META_CATEGORY, chunk.getMetadata().category());
                 }
                 vector.put("metadata", metadata);
                 vectors.add(vector);
@@ -69,7 +73,7 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
             if (success) {
                 totalUpserted += batch.size();
             } else {
-                log.error("Batch {} failed after {} retries, stopping upsert", batchIndex + 1, MAX_RETRIES);
+                log.error("Batch {} failed after {} retries, stopping upsert", batchIndex + 1, AppConstants.PINECONE_MAX_RETRIES);
                 break;
             }
         }
@@ -78,10 +82,56 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
         return totalUpserted;
     }
 
-    private boolean upsertBatchWithRetry(String host, String namespace, List<Map<String, Object>> vectors, int batchNum, int totalBatches) {
-        long backoff = INITIAL_BACKOFF_MS;
+    @Override
+    public int upsertVectors(String collectionName, List<VectorEntry> entries) {
+        if (entries.isEmpty()) return 0;
 
-        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        String namespace = indexResolver.resolveCurrentNamespace();
+        String host = pineconeConfig.getHost();
+
+        if (host == null || host.isBlank()) {
+            log.warn("Pinecone host not configured, skipping upsert of {} vectors", entries.size());
+            return 0;
+        }
+
+        int totalUpserted = 0;
+        int totalBatches = (entries.size() + AppConstants.PINECONE_BATCH_SIZE - 1) / AppConstants.PINECONE_BATCH_SIZE;
+
+        for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+            int start = batchIndex * AppConstants.PINECONE_BATCH_SIZE;
+            int end = Math.min(start + AppConstants.PINECONE_BATCH_SIZE, entries.size());
+            List<VectorEntry> batch = entries.subList(start, end);
+
+            List<Map<String, Object>> vectors = new ArrayList<>();
+            for (VectorEntry entry : batch) {
+                Map<String, Object> vector = new LinkedHashMap<>();
+                vector.put("id", entry.id());
+                if (entry.embedding() != null && !entry.embedding().isEmpty()) {
+                    vector.put("values", entry.embedding());
+                }
+                if (entry.metadata() != null) {
+                    vector.put("metadata", entry.metadata());
+                }
+                vectors.add(vector);
+            }
+
+            boolean success = upsertBatchWithRetry(host, namespace, vectors, batchIndex + 1, totalBatches);
+            if (success) {
+                totalUpserted += batch.size();
+            } else {
+                log.error("Batch {} failed after {} retries, stopping upsert", batchIndex + 1, AppConstants.PINECONE_MAX_RETRIES);
+                break;
+            }
+        }
+
+        log.info("Pinecone upsertVectors complete: {}/{} vectors to namespace='{}'", totalUpserted, entries.size(), namespace);
+        return totalUpserted;
+    }
+
+    private boolean upsertBatchWithRetry(String host, String namespace, List<Map<String, Object>> vectors, int batchNum, int totalBatches) {
+        long backoff = AppConstants.PINECONE_INITIAL_BACKOFF_MS;
+
+        for (int attempt = 1; attempt <= AppConstants.PINECONE_MAX_RETRIES; attempt++) {
             try {
                 Map<String, Object> body = new LinkedHashMap<>();
                 body.put("vectors", vectors);
@@ -90,9 +140,9 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
                 RestTemplate rest = new RestTemplate();
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.set("Api-Key", pineconeConfig.getApiKey());
+                headers.set(AppConstants.PINECONE_API_KEY_HEADER, pineconeConfig.getApiKey());
 
-                String url = "https://" + host + "/vectors/upsert";
+                String url = "https://" + host + AppConstants.PINECONE_UPSERT_PATH;
                 HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
 
                 ResponseEntity<String> response = rest.exchange(url, HttpMethod.POST, request, String.class);
@@ -107,7 +157,7 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
                 log.warn("Batch {}/{}: attempt {} failed: {}", batchNum, totalBatches, attempt, e.getMessage());
             }
 
-            if (attempt < MAX_RETRIES) {
+                if (attempt < AppConstants.PINECONE_MAX_RETRIES) {
                 try {
                     Thread.sleep(backoff);
                 } catch (InterruptedException ie) {
@@ -118,6 +168,51 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
             }
         }
         return false;
+    }
+
+    @Override
+    public void upsertVector(String vectorId, List<Float> embedding, Map<String, Object> metadata, String text) {
+        String host = pineconeConfig.getHost();
+        if (host == null || host.isBlank()) {
+            log.warn("Pinecone host not configured, skipping upsert for {}", vectorId);
+            return;
+        }
+
+        String namespace = indexResolver.resolveCurrentNamespace();
+
+        try {
+            Map<String, Object> vector = new LinkedHashMap<>();
+            vector.put("id", vectorId);
+            if (embedding != null && !embedding.isEmpty()) {
+                vector.put("values", embedding);
+            }
+            
+            Map<String, Object> metaMap = new LinkedHashMap<>();
+            if (metadata != null) {
+                metaMap.putAll(metadata);
+            }
+            if (text != null) {
+                metaMap.put(AppConstants.META_TEXT, text);
+            }
+            vector.put("metadata", metaMap);
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("vectors", List.of(vector));
+            body.put("namespace", namespace);
+
+            RestTemplate rest = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set(AppConstants.PINECONE_API_KEY_HEADER, pineconeConfig.getApiKey());
+
+            String url = "https://" + host + AppConstants.PINECONE_UPSERT_PATH;
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
+
+            ResponseEntity<String> response = rest.exchange(url, HttpMethod.POST, request, String.class);
+            log.debug("Pinecone upsertVector: id='{}', status={}", vectorId, response.getStatusCode());
+        } catch (Exception e) {
+            log.error("Pinecone upsertVector failed for '{}': {}", vectorId, e.getMessage(), e);
+        }
     }
 
     @Override
@@ -140,9 +235,9 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
             RestTemplate rest = new RestTemplate();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Api-Key", pineconeConfig.getApiKey());
+            headers.set(AppConstants.PINECONE_API_KEY_HEADER, pineconeConfig.getApiKey());
 
-            String url = "https://" + host + "/query";
+            String url = "https://" + host + AppConstants.PINECONE_QUERY_PATH;
             HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
 
             ResponseEntity<String> response = rest.exchange(url, HttpMethod.POST, request, String.class);
@@ -152,10 +247,19 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
             List<KnowledgeChunk> results = new ArrayList<>();
             for (var match : matches) {
                 var meta = match.path("metadata");
+                DocumentMetadata docMeta = DocumentMetadata.builder()
+                    .documentId(meta.path("documentId").asText(""))
+                    .title(meta.has("title") ? meta.path("title").asText(null) : null)
+                    .department(meta.has("department") ? meta.path("department").asText(null) : null)
+                    .category(meta.has("category") ? meta.path("category").asText(null) : null)
+                    .build();
+
                 KnowledgeChunk chunk = KnowledgeChunk.builder()
                     .chunkId(match.path("id").asText())
                     .documentId(meta.path("documentId").asText(""))
                     .chunkIndex(meta.has("chunkIndex") ? meta.path("chunkIndex").asInt() : 0)
+                    .textContent(meta.has("text") ? meta.path("text").asText(null) : null)
+                    .metadata(docMeta)
                     .relevanceScore(match.path("score").asDouble())
                     .build();
                 results.add(chunk);
@@ -175,21 +279,47 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
         try {
             String namespace = indexResolver.resolveCurrentNamespace();
             Map<String, Object> body = Map.of(
-                "filter", Map.of("documentId", Map.of("$eq", documentId)),
+                "filter", Map.of(AppConstants.META_DOCUMENT_ID, Map.of("$eq", documentId)),
                 "namespace", namespace
             );
 
             RestTemplate rest = new RestTemplate();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Api-Key", pineconeConfig.getApiKey());
+            headers.set(AppConstants.PINECONE_API_KEY_HEADER, pineconeConfig.getApiKey());
 
-            String url = "https://" + host + "/vectors/delete";
+            String url = "https://" + host + AppConstants.PINECONE_DELETE_PATH;
             HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
             rest.exchange(url, HttpMethod.POST, request, String.class);
             log.info("Deleted vectors for documentId='{}' from namespace='{}'", documentId, namespace);
         } catch (Exception e) {
             log.error("Pinecone delete failed: {}", e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void deleteVector(String vectorId) {
+        String host = pineconeConfig.getHost();
+        if (host == null || host.isBlank()) return;
+
+        try {
+            String namespace = indexResolver.resolveCurrentNamespace();
+            Map<String, Object> body = Map.of(
+                "ids", List.of(vectorId),
+                "namespace", namespace
+            );
+
+            RestTemplate rest = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set(AppConstants.PINECONE_API_KEY_HEADER, pineconeConfig.getApiKey());
+
+            String url = "https://" + host + AppConstants.PINECONE_DELETE_PATH;
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
+            rest.exchange(url, HttpMethod.POST, request, String.class);
+            log.info("Deleted vector '{}' from namespace='{}'", vectorId, namespace);
+        } catch (Exception e) {
+            log.error("Pinecone deleteVector failed for '{}': {}", vectorId, e.getMessage());
         }
     }
 

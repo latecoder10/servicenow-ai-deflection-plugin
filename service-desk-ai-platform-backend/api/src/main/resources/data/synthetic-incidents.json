@@ -1,0 +1,212 @@
+[
+  {
+    "number": "INC00469",
+    "short_description": "Access Rights Restriction",
+    "description": "Merchant reported being unable to e-sign the Merchant Agreement due to an access permission error in the UI, halting the onboarding process.",
+    "urgency": 3,
+    "impact": 1,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "Development team identified a bug in the service configuration module that was blocking the setup. A code fix was deployed, allowing Sales Agent to configure services for the additional location."
+  },
+  {
+    "number": "INC00153",
+    "short_description": "Merchant data displaying incorrectly",
+    "description": "During the data upload process for a new merchant, the API endpoint consistently returns a 500 error, preventing sales agents from successfully onboarding the merchant.",
+    "urgency": 1,
+    "impact": 2,
+    "category": "Hardware",
+    "assignment_group": "Network Ops",
+    "resolution": "Rectified the issue by performing a data refresh to fetch and display the accurate merchant information in the Sales UI."
+  },
+  {
+    "number": "INC00211",
+    "short_description": "Touchscreen malfunction on Merchant's device for e-signing",
+    "description": "Merchants facing frequent network timeout errors while submitting data, leading to delays in onboarding process.",
+    "urgency": 2,
+    "impact": 2,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "Development team identified a bug in the service configuration module that was blocking the setup. A code fix was deployed, allowing Sales Agent to configure services for the additional location."
+  },
+  {
+    "number": "INC00494",
+    "short_description": "Error in Equipment Configuration",
+    "description": "Sales Agent encountered an error when trying to onboard an additional location for merchant ID 12345. The system displayed a 'Duplicate Location' error message.",
+    "urgency": 2,
+    "impact": 3,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "Resolved by clearing the browser cache and reloading the Customer UI. PDF now loads successfully."
+  },
+  {
+    "number": "INC00296",
+    "short_description": "Equipment Configuration Freeze on Legacy Browser",
+    "description": "An issue arose where fees were calculated inaccurately for a specific equipment bundle, leading to potential financial discrepancies; Sales Agent and Merchant affected.",
+    "urgency": 2,
+    "impact": 3,
+    "category": "Network",
+    "assignment_group": "IT Support",
+    "resolution": "A bug in the equipment selection module was identified and fixed by the development team. Sales Agent was instructed to reselect the equipment and verify successful saving."
+  },
+  {
+    "number": "INC00155",
+    "short_description": "Merchant unable to submit e-signed agreement",
+    "description": "A Sales Agent's access to configure service fees for a merchant is restricted erroneously, preventing them from finalizing the onboarding process. Merchant onboarding delayed.",
+    "urgency": 3,
+    "impact": 2,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "Backend developers investigated the issue and resolved the database conflict causing the duplication error. Sales Agent successfully continued with setting up the new location."
+  },
+  {
+    "number": "INC00414",
+    "short_description": "Equipment selection not saved for new location",
+    "description": "During the onboarding process for an additional location, the Sales Agent received an error message stating 'Location already exists' even though it's a new location being added. This issue caused confusion and delays in completing the merchant setup.",
+    "urgency": 2,
+    "impact": 2,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "Investigated API logs, identified a server-side issue causing data retrieval failures. Applied a patch to the API server to resolve the issue."
+  },
+  {
+    "number": "INC00379",
+    "short_description": "PDF not loading for Merchant Agreement review",
+    "description": "Upon successful login, the Merchant encounters a blank screen instead of the expected Merchant Agreement review interface.",
+    "urgency": 2,
+    "impact": 2,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "Advised Sales Agent to switch to a supported browser. Unfroze the session, verified data integrity, and recommended browser upgrade for future stability."
+  },
+  {
+    "number": "INC00176",
+    "short_description": "Error message 'Invalid Signature' when attempting to e-sign Agreement",
+    "description": "Sales Agent encountered an issue where a specific POS terminal model, 'ABC-2000', could not be selected while configuring equipment for a merchant.",
+    "urgency": 2,
+    "impact": 2,
+    "category": "Network",
+    "assignment_group": "IT Support",
+    "resolution": "Reviewed and adjusted the permission settings for the Merchant UI, allowing the merchant to successfully e-sign the agreement and proceed with onboarding."
+  },
+  {
+    "number": "INC00161",
+    "short_description": "Intermittent connection issues while configuring services",
+    "description": "After configuring fees and services for a new merchant location, Sales Agent noticed that the changes were not reflecting in the system. This discrepancy caused delays in finalizing the onboarding process.",
+    "urgency": 1,
+    "impact": 1,
+    "category": "Access",
+    "assignment_group": "IT Support",
+    "resolution": "The network timeout issue was addressed by optimizing network settings and increasing timeout thresholds, allowing Sales Agents to successfully complete the equipment selection process without further interruptions."
+  },
+  {
+    "number": "INC00099",
+    "short_description": "Access permission error preventing merchant fee configuration",
+    "description": "Merchants are experiencing network timeouts when trying to retrieve and e-sign the Merchant Agreement PDF. This is causing delays in the onboarding process as merchants are unable to proceed.",
+    "urgency": 3,
+    "impact": 1,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "Investigated the issue and found a misconfiguration in the equipment database linkage. Corrected the configuration, and now Sales Agents can see and select equipment options as intended."
+  },
+  {
+    "number": "INC00482",
+    "short_description": "Equipment selection not saving for new merchant location",
+    "description": "Sales Agent notices that the merchant data inputted is not displaying correctly in the Sales UI, hindering the completion of the onboarding process.",
+    "urgency": 3,
+    "impact": 3,
+    "category": "Access",
+    "assignment_group": "IT Support",
+    "resolution": "Investigated and resolved the issue by fixing a backend database synchronization error that was preventing configuration saves."
+  },
+  {
+    "number": "INC00361",
+    "short_description": "Fee configuration not reflecting for additional location",
+    "description": "Merchants are experiencing network timeouts when trying to retrieve and e-sign the Merchant Agreement PDF. This is causing delays in the onboarding process as merchants are unable to proceed.",
+    "urgency": 1,
+    "impact": 3,
+    "category": "Software",
+    "assignment_group": "Network Ops",
+    "resolution": "Collaborated with the hardware vendor to troubleshoot the integration problem, resulting in successful configuration of the payment terminal for seamless merchant transactions."
+  },
+  {
+    "number": "INC00174",
+    "short_description": "Merchant ID not recognized for additional location",
+    "description": "Sales Agent noticed that any changes made to fees/services configurations for a merchant are not saving properly in the system.",
+    "urgency": 2,
+    "impact": 2,
+    "category": "Network",
+    "assignment_group": "Network Ops",
+    "resolution": "The network team identified a routing issue causing the intermittent connections and resolved it by optimizing the network configuration to ensure stable and uninterrupted service."
+  },
+  {
+    "number": "INC00438",
+    "short_description": "Hardware malfunction affecting equipment selection for merchants",
+    "description": "Sales Agent encountered a hardware compatibility issue while configuring fees for a merchant, leading to incorrect fee settings.",
+    "urgency": 2,
+    "impact": 3,
+    "category": "Access",
+    "assignment_group": "Network Ops",
+    "resolution": "Reviewed and adjusted file permission settings for the Merchant Agreement PDF, granting appropriate access to merchants for e-signing. Ensured merchants could view and sign the agreement without further issues."
+  },
+  {
+    "number": "INC00479",
+    "short_description": "Equipment selection not saved for new location",
+    "description": "Merchant facing difficulties in submitting the e-signed Merchant Agreement through the UI, hindering the onboarding process.",
+    "urgency": 1,
+    "impact": 1,
+    "category": "Hardware",
+    "assignment_group": "IT Support",
+    "resolution": "Adjusted Sales Agent's access rights to correctly configure service fees for merchants. Resumed the onboarding process for the affected merchant."
+  },
+  {
+    "number": "INC00024",
+    "short_description": "Intermittent Connectivity Issue During Equipment Selection",
+    "description": "Sales Agent encountered an error when trying to onboard an additional location for merchant ID 12345. The system displayed a 'Duplicate Location' error message.",
+    "urgency": 3,
+    "impact": 3,
+    "category": "Access",
+    "assignment_group": "IT Support",
+    "resolution": "The access issue was traced back to a permission setting error and was resolved by adjusting the agent's role permissions to grant access to the required module."
+  },
+  {
+    "number": "INC00123",
+    "short_description": "Error message 'Invalid Signature' when attempting to e-sign Agreement",
+    "description": "After configuring fees and services for a new merchant location, Sales Agent noticed that the changes were not reflecting in the system. This discrepancy caused delays in finalizing the onboarding process.",
+    "urgency": 3,
+    "impact": 1,
+    "category": "Access",
+    "assignment_group": "IT Support",
+    "resolution": "The network timeout issue was addressed by optimizing network settings and increasing timeout thresholds, allowing Sales Agents to successfully complete the equipment selection process without further interruptions."
+  },
+  {
+    "number": "INC00331",
+    "short_description": "API endpoint returning 500 error for merchant data upload",
+    "description": "Merchant experiencing issues with loading the Merchant Agreement PDF for review and e-signing.",
+    "urgency": 2,
+    "impact": 2,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "Reviewed and adjusted the permission settings for the Merchant UI, allowing the merchant to successfully e-sign the agreement and proceed with onboarding."
+  },
+  {
+    "number": "INC00137",
+    "short_description": "Fee Calculation Bug",
+    "description": "Sales Agent reported inability to retrieve merchant information through the REST API, impacting onboarding process.",
+    "urgency": 2,
+    "impact": 2,
+    "category": "Software",
+    "assignment_group": "IT Support",
+    "resolution": "The network team identified a routing issue causing the intermittent connections and resolved it by optimizing the network configuration to ensure stable and uninterrupted service."
+  },
+  {
+    "number": "INC00488",
+    "short_description": "Equipment selection not saved for new location",
+    "description": "Merchant experiencing issues with loading the Merchant Agreement PDF for review and e-signing.",
+    "urgency": 2,
+    "impact": 3,
+    "category": "Hardware",
+    "assignment_group": "IT Support",
+    "resolution": "Identified a configuration error in the API authentication settings, which was corrected to restore data retrieval functionality."
+  }
+]

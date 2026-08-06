@@ -28,7 +28,8 @@ public class AuditLogEntity extends AuditableEntity {
     @Column(name = "resource_id", length = 100)
     private String resourceId;
 
-    @Column(name = "details", columnDefinition = "TEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "details", columnDefinition = "jsonb")
     private String details;
 
     @Column(name = "ip_address", length = 45)

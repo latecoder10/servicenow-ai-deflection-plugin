@@ -1,196 +1,134 @@
-import React, { useState } from 'react';
-import {
-  NavigationTab,
-  KnowledgeDocument,
-  KnowledgeArticle,
-  ResolvedIncident,
-  MetricOverview,
-  PipelineJob,
-  ServiceNowConnectionConfig,
-  AIModelConfig,
-  SystemUser,
-  AuditLogEntry,
-} from './types';
-import {
-  INITIAL_METRICS,
-  INITIAL_DOCUMENTS,
-  INITIAL_KNOWLEDGE_ARTICLES,
-  INITIAL_RESOLVED_INCIDENTS,
-  INITIAL_SERVICENOW_CONFIG,
-  INITIAL_AI_CONFIG,
-  INITIAL_PIPELINE_JOBS,
-  INITIAL_USERS,
-  INITIAL_AUDIT_LOGS,
-} from './data/mockKnowledgeBase';
+import React, { useState, useEffect } from 'react';
+import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
+import { DashboardOverview } from './components/DashboardOverview';
+import { ServiceNowPluginView } from './components/ServiceNowPluginView';
+import { DeflectionEngine } from './components/DeflectionEngine';
+import { KnowledgeExplorer } from './components/KnowledgeExplorer';
+import { ConnectorHub } from './components/ConnectorHub';
+import { AnalyticsDashboard } from './components/AnalyticsDashboard';
+import { KnowledgeRecord } from './types';
 
-import { Header } from './components/layout/Header';
-import { Sidebar } from './components/layout/Sidebar';
-import { OverviewDashboard } from './components/overview/OverviewDashboard';
-import { KnowledgeHub } from './components/knowledge/KnowledgeHub';
-import { AISearchEngine } from './components/aisearch/AISearchEngine';
-import { IncidentDeflectionAssist } from './components/incident/IncidentDeflectionAssist';
-import { AnalyticsView } from './components/analytics/AnalyticsView';
-import { ServiceNowIntegrationView } from './components/servicenow/ServiceNowIntegrationView';
-import { AIConfigurationView } from './components/aiconfig/AIConfigurationView';
-import { PipelineMonitorView } from './components/pipeline/PipelineMonitorView';
-import { UsersRolesView } from './components/admin/UsersRolesView';
-import { AuditLogsView } from './components/admin/AuditLogsView';
-import { SettingsView } from './components/admin/SettingsView';
+export function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [springBootConnected, setSpringBootConnected] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [knowledgeRecords, setKnowledgeRecords] = useState<KnowledgeRecord[]>([]);
+  const [selectedTriggerTitle, setSelectedTriggerTitle] = useState<string>('');
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<NavigationTab>('overview');
-  const [metrics, setMetrics] = useState<MetricOverview>(INITIAL_METRICS);
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>(INITIAL_DOCUMENTS);
-  const [articles, setArticles] = useState<KnowledgeArticle[]>(INITIAL_KNOWLEDGE_ARTICLES);
-  const [incidents, setIncidents] = useState<ResolvedIncident[]>(INITIAL_RESOLVED_INCIDENTS);
-  const [servicenowConfig, setServicenowConfig] = useState<ServiceNowConnectionConfig>(INITIAL_SERVICENOW_CONFIG);
-  const [aiConfig, setAiConfig] = useState<AIModelConfig>(INITIAL_AI_CONFIG);
-  const [pipelineJobs, setPipelineJobs] = useState<PipelineJob[]>(INITIAL_PIPELINE_JOBS);
-  const [users, setUsers] = useState<SystemUser[]>(INITIAL_USERS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
-
-  // Handle successful deflection in simulation
-  const handleDeflectSuccess = () => {
-    setMetrics((prev) => {
-      const newDeflections = prev.ticketsDeflectedCount + 1;
-      const newTotalAnalyzed = prev.totalIncidentsAnalyzed + 1;
-      const newRate = parseFloat(((newDeflections / newTotalAnalyzed) * 100).toFixed(1));
-      const newSavings = prev.monthlyCostSavingsUSD + 15;
-      return {
-        ...prev,
-        ticketsDeflectedCount: newDeflections,
-        totalIncidentsAnalyzed: newTotalAnalyzed,
-        deflectionRatePercent: newRate,
-        monthlyCostSavingsUSD: newSavings,
-      };
-    });
-
-    // Add Audit log entry
-    const newAuditLog: AuditLogEntry = {
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      actor: 'Employee Self-Service Portal',
-      actorRole: 'User',
-      action: 'INCIDENT_DEFLECTED_SUCCESS',
-      category: 'Knowledge',
-      severity: 'low',
-      details: 'Incident deflected prior to ServiceNow creation via Gemini AI recommendation. ROI: +$15.00',
-      ipAddress: '192.168.1.104',
-    };
-    setAuditLogs((prev) => [newAuditLog, ...prev]);
+  const checkHealth = async () => {
+    try {
+      const res = await fetch('/api/v1/health');
+      if (res.ok) {
+        setSpringBootConnected(true);
+      } else {
+        setSpringBootConnected(false);
+      }
+    } catch (err) {
+      setSpringBootConnected(false);
+    }
   };
 
-  // Add document
-  const handleAddDocument = (newDoc: KnowledgeDocument) => {
-    setDocuments((prev) => [newDoc, ...prev]);
-    setMetrics((prev) => ({
-      ...prev,
-      knowledgeBaseDocumentsCount: prev.knowledgeBaseDocumentsCount + 1,
-      totalEmbeddingsCount: prev.totalEmbeddingsCount + newDoc.embeddingCount,
-    }));
+  const fetchKnowledgeRecords = async () => {
+    try {
+      const res = await fetch('/api/v1/knowledge/records');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setKnowledgeRecords(data);
+      }
+    } catch (err) {
+      console.error('Failed to load initial knowledge records', err);
+    }
   };
 
-  // Delete document
-  const handleDeleteDocument = (docId: string) => {
-    setDocuments((prev) => prev.filter((d) => d.id !== docId));
-  };
+  useEffect(() => {
+    checkHealth();
+    fetchKnowledgeRecords();
+  }, []);
 
-  // Re-index document
-  const handleReindexDocument = (docId: string) => {
-    setDocuments((prev) =>
-      prev.map((d) =>
-        d.id === docId
-          ? { ...d, lastIndexed: new Date().toLocaleString(), status: 'indexed' }
-          : d
-      )
-    );
+  const handleTriggerDeflectionFromDashboard = (title: string) => {
+    setSelectedTriggerTitle(title);
+    setActiveTab('deflection');
   };
 
   return (
-    <div className="h-screen bg-slate-50 text-slate-800 font-sans flex flex-col selection:bg-blue-100 selection:text-blue-900 overflow-hidden">
-      {/* Top Google Enterprise App Header */}
-      <Header
+    <div className="min-h-screen bg-[#f4f5f8] text-slate-900 flex font-sans antialiased">
+      
+      {/* Left Navigation Sidebar */}
+      <Sidebar
         activeTab={activeTab}
-        onSearchClick={() => setActiveTab('ai_search')}
+        setActiveTab={setActiveTab}
+        springBootConnected={springBootConnected}
+        isOpen={sidebarOpen}
+        onToggleOpen={() => setSidebarOpen(!sidebarOpen)}
       />
 
-      {/* Main Workspace Layout */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* Left Google Enterprise Navigation Sidebar */}
-        <Sidebar
+      {/* Main Content Area next to Sidebar */}
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ease-in-out ${sidebarOpen ? 'md:ml-64 ml-0' : 'md:ml-18 ml-0'}`}>
+        
+        {/* Top Header Bar */}
+        <Header
           activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          knowledgeBaseCount={documents.length + articles.length}
+          setActiveTab={setActiveTab}
+          springBootConnected={springBootConnected}
+          onRefreshHealth={checkHealth}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
 
-        {/* Center Main Content Area */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 text-slate-800">
-          {activeTab === 'overview' && (
-            <OverviewDashboard
-              metrics={metrics}
-              documents={documents}
-              articles={articles}
+        {/* Main Workspace Body */}
+        <main className="flex-1 p-4 sm:p-6 max-w-[1600px] w-full mx-auto">
+          {activeTab === 'dashboard' && (
+            <DashboardOverview
               onNavigateTab={setActiveTab}
+              knowledgeRecords={knowledgeRecords}
+              onTriggerDeflection={handleTriggerDeflectionFromDashboard}
             />
           )}
 
-          {[
-            'documents',
-            'knowledge_articles',
-            'resolved_incidents',
-            'faqs_sops',
-            'confluence_sharepoint',
-            'servicenow_sync',
-          ].includes(activeTab) && (
-            <KnowledgeHub
-              activeTab={activeTab}
-              documents={documents}
-              articles={articles}
-              incidents={incidents}
-              onAddDocument={handleAddDocument}
-              onDeleteDocument={handleDeleteDocument}
-              onReindexDocument={handleReindexDocument}
-              onSelectTab={setActiveTab}
+          {activeTab === 'servicenow-plugin' && (
+            <ServiceNowPluginView
+              knowledgeRecords={knowledgeRecords}
+              onTriggerDeflection={handleTriggerDeflectionFromDashboard}
             />
           )}
 
-          {activeTab === 'ai_search' && <AISearchEngine />}
-
-          {activeTab === 'incident_deflection' && (
-            <IncidentDeflectionAssist
-              onDeflectSuccess={handleDeflectSuccess}
-              articles={articles}
-              incidents={incidents}
-            />
+          {activeTab === 'deflection' && (
+            <DeflectionEngine initialQuery={selectedTriggerTitle} />
           )}
 
-          {activeTab === 'analytics' && <AnalyticsView metrics={metrics} />}
-
-          {activeTab === 'servicenow_config' && (
-            <ServiceNowIntegrationView
-              config={servicenowConfig}
-              onUpdateConfig={setServicenowConfig}
-            />
+          {activeTab === 'knowledge' && (
+            <KnowledgeExplorer />
           )}
 
-          {activeTab === 'ai_config' && (
-            <AIConfigurationView
-              config={aiConfig}
-              onUpdateConfig={setAiConfig}
-            />
+          {activeTab === 'connector' && (
+            <ConnectorHub />
           )}
 
-          {activeTab === 'pipeline_monitor' && (
-            <PipelineMonitorView jobs={pipelineJobs} />
+          {activeTab === 'analytics' && (
+            <AnalyticsDashboard />
           )}
-
-          {activeTab === 'users_roles' && <UsersRolesView users={users} />}
-
-          {activeTab === 'audit_logs' && <AuditLogsView logs={auditLogs} />}
-
-          {activeTab === 'settings' && <SettingsView />}
         </main>
+
+        {/* Footer Status Bar */}
+        <footer className="border-t border-slate-200/80 bg-white py-3 px-4 sm:px-6 text-xs text-slate-500 mt-auto">
+          <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-900">AI Service Desk Knowledge Platform</span>
+              <span>•</span>
+              <span>Spring Boot 3.4, Google Gemini 3.6 Flash & Pinecone Vector Store</span>
+            </div>
+            <div className="flex items-center gap-4 font-mono text-[11px] text-slate-400">
+              <span>OAuth2 PKCE: Active</span>
+              <span>Index: servicedesk-knowledge</span>
+              <span className="text-emerald-600 font-bold">Status: Healthy</span>
+            </div>
+          </div>
+        </footer>
+
       </div>
+
     </div>
   );
 }
+
+export default App;

@@ -5,13 +5,6 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
-    <include file="db/changelog/changesets/20260803_init_postgres_schema.sql"/>
-    <include file="db/changelog/changesets/20260803_document_tables.sql"/>
-    <include file="db/changelog/changesets/20260803_ai_configuration.sql"/>
-    <include file="db/changelog/changesets/20260803_servicenow.sql"/>
-    <include file="db/changelog/changesets/20260803_audit_feedback.sql"/>
-    <include file="db/changelog/changesets/20260803_indexes.sql"/>
-    <include file="db/changelog/changesets/20260803_fix_upload_jobs_columns.sql"/>
-    <include file="db/changelog/changesets/20260803_fix_missing_auditable_columns.sql"/>
+    <include file="db/changelog/changesets/20260801_full_schema.sql"/>
 
 </databaseChangeLog>

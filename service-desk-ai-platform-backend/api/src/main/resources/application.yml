@@ -5,9 +5,9 @@ spring:
     active: dev
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME}
-    password: ${SPRING_DATASOURCE_PASSWORD}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/servicedesk_ai}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:changeme}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 30
@@ -35,7 +35,14 @@ spring:
     drop-first: false
 
   task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 30s
     execution:
+      shutdown:
+        await-termination: true
+        await-termination-period: 30s
       pool:
         core-size: 10
         max-size: 50
@@ -43,6 +50,7 @@ spring:
         keep-alive: 60s
       thread-name-prefix: async-ingestion-
 
+# ──────────────────────── STORAGE ────────────────────────
 storage:
   type: LOCAL_FILE_SYSTEM
   local:
@@ -54,28 +62,72 @@ storage:
     failed-folder: ${STORAGE_FAILED_FOLDER:failed}
     max-file-size-bytes: 104857600 # 100MB
 
+# ──────────────────────── AI / LLM / EMBEDDING ────────────────────────
 ai:
   llm:
     provider: GEMINI
     model-name: gemini-3.6-flash
-    api-key: ${GEMINI_API_KEY}
+    api-key: ${GEMINI_API_KEY:}
   embedding:
     provider: GEMINI
-    model-name: text-embedding-004
+    model-name: gemini-embedding-001
     dimension: 1024
   pinecone:
-    api-key: ${AI_PINECONE_API_KEY}
-    host: ${AI_PINECONE_HOST}
+    api-key: ${AI_PINECONE_API_KEY:pcsk_6rhLgt_9dRvGj8nmxBgiRGybF22SGtZmak3U99snhmEXJy3tp6GAdjWVHZhGwmtpbkq9V}
+    host: ${AI_PINECONE_HOST:servicedesk-knowledge-7hsstp4.svc.aped-4627-b74a.pinecone.io}
     index-name: servicedesk-knowledge
     dimension: 1024
     namespace-prefix: ""
 
+# ──────────────────────── SERVICENOW ────────────────────────
+servicenow:
+  instance-url: ${SERVICENOW_INSTANCE_URL:}
+  client-id: ${SERVICENOW_CLIENT_ID:}
+  client-secret: ${SERVICENOW_CLIENT_SECRET:}
+  username: ${SERVICENOW_USERNAME:}
+  password: ${SERVICENOW_PASSWORD:}
+  auth-mode: ${SERVICENOW_AUTH_MODE:OAuth2.0 Bearer}
+  system-of-record: ${SERVICENOW_SYSTEM_OF_RECORD:ServiceNow ITSM & Knowledge}
+  connection-timeout-ms: 5000
+  read-timeout-ms: 15000
+
+# ──────────────────────── SCHEDULER ────────────────────────
+scheduler:
+  servicenow:
+    enabled: ${SCHEDULER_SERVICENOW_ENABLED:true}
+    cron: "0 */15 * * * *"   # every 15 minutes
+    sync-limit: 100          # max records per sync run
+
+# ──────────────────────── RESILIENCE4J ────────────────────────
+resilience4j:
+  circuitbreaker:
+    instances:
+      serviceNowApi:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+  retry:
+    instances:
+      serviceNowApi:
+        maxAttempts: 3
+        waitDuration: 1s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - java.io.IOException
+          - com.servicedesk.ai.common.exception.IntegrationException
+
+# ──────────────────────── SERVER ────────────────────────
 server:
   port: 8080
   servlet:
     context-path: /
   shutdown: graceful
 
+# ──────────────────────── MANAGEMENT ────────────────────────
 management:
   endpoints:
     web:
