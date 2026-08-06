@@ -40,7 +40,25 @@ You also need API keys for:
 
 > **Note on setup scripts:** `setup.sh` is portable. `setup.bat` has hardcoded paths for Java and PostgreSQL -- edit the `JAVA_HOME` and `psql.exe` paths if yours differ.
 
-### Step 1: Copy the environment template
+### One-Click Setup (Recommended)
+
+```bash
+# Windows
+setup.bat
+
+# Linux / Mac
+./setup.sh
+```
+
+The setup script does **everything** -- copies `.env.local`, creates the `servicedesk_ai` database, builds all modules. Then just run:
+
+```bash
+mvn spring-boot:run -pl modules/api -DskipTests
+```
+
+### Manual Setup (If not using setup script)
+
+#### Step 1: Copy the environment template
 
 ```bash
 cp .env.example .env.local
@@ -69,15 +87,15 @@ SERVICENOW_USERNAME=your-username
 SERVICENOW_PASSWORD=your-password
 ```
 
-### Step 2: Create the database
+#### Step 2: Create the database (REQUIRED -- app won't start without it)
 
 ```bash
 psql -h localhost -p 5432 -U postgres -c "CREATE DATABASE servicedesk_ai;"
 ```
 
-> **Note:** Liquibase runs automatically on startup and creates all tables. You don't need to run any SQL manually.
+> **This is mandatory.** The app connects to `servicedesk_ai` on startup. If the database doesn't exist, you'll get a connection error and the app will crash. Liquibase handles all table creation automatically once the database exists.
 
-### Step 3: Build and run
+#### Step 3: Build and run
 
 ```bash
 # Build all modules
@@ -334,7 +352,9 @@ The `servicenow-plugin/` directory contains everything needed to deploy the AI w
 
 ## Troubleshooting
 
-**Application won't start -- "Connection refused" to PostgreSQL**
+**Application won't start -- "Connection refused" or "database does not exist"**
+- The `servicedesk_ai` database must exist BEFORE you start the app
+- Create it: `psql -h localhost -p 5432 -U postgres -c "CREATE DATABASE servicedesk_ai;"`
 - Make sure PostgreSQL is running: `pg_isready -h localhost -p 5432`
 - Check your password in `.env.local` matches your PostgreSQL password
 
