@@ -13,17 +13,17 @@
     <description>Enterprise ServiceNow Knowledge Intelligence &amp; AI Incident Deflection Engine</description>
 
     <modules>
-        <module>common</module>
-        <module>domain</module>
-        <module>application</module>
-        <module>knowledge-loader</module>
-        <module>integration/pinecone</module>
-        <module>integration/servicenow</module>
-        <module>integration/llm</module>
-        <module>analytics</module>
-        <module>security</module>
-        <module>infrastructure</module>
-        <module>api</module>
+        <module>modules/common</module>
+        <module>modules/domain</module>
+        <module>modules/application</module>
+        <module>modules/knowledge-loader</module>
+        <module>modules/integration/pinecone</module>
+        <module>modules/integration/servicenow</module>
+        <module>modules/integration/llm</module>
+        <module>modules/analytics</module>
+        <module>modules/security</module>
+        <module>modules/infrastructure</module>
+        <module>modules/api</module>
     </modules>
 
     <properties>
