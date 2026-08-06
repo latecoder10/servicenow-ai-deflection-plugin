@@ -1,232 +1,19 @@
-# AI Service Desk - Complete End-to-End Setup Guide
-
-## Table of Contents
-1. [System Architecture](#system-architecture)
-2. [Prerequisites](#prerequisites)
-3. [Backend Setup](#backend-setup)
-4. [External Services Configuration](#external-services-configuration)
-5. [Data Ingestion](#data-ingestion)
-6. [Cloudflare Tunnel Setup](#cloudflare-tunnel-setup)
-7. [ServiceNow Plugin Setup](#servicenow-plugin-setup)
-8. [Testing the Integration](#testing-the-integration)
-9. [Troubleshooting](#troubleshooting)
-
----
-
-## System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        ServiceNow Instance                         │
-│                    (dev440425.service-now.com)                      │
-│                                                                     │
-│  ┌─────────────────┐    ┌──────────────────┐    ┌───────────────┐  │
-│  │  Client Script   │───▶│  Script Include   │───▶│  REST Call    │  │
-│  │  (onChange)      │    │  (GlideAjax)     │    │  (HTTP POST)  │  │
-│  └─────────────────┘    └──────────────────┘    └───────┬───────┘  │
-└─────────────────────────────────────────────────────────┼───────────┘
-                                                          │
-                                                          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Cloudflare Tunnel                                │
-│        (sciences-tap-museum-insulation.trycloudflare.com)           │
-└─────────────────────────────────────────────────────────┼───────────┘
-                                                          │
-                                                          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Spring Boot Backend                              │
-│                    (localhost:8080)                                  │
-│                                                                     │
-│  ┌─────────────────┐    ┌──────────────────┐    ┌───────────────┐  │
-│  │  REST Controller │───▶│  Suggestion      │───▶│  Pinecone     │  │
-│  │  /suggestions/* │    │  Engine          │    │  Vector DB    │  │
-│  └─────────────────┘    └──────────────────┘    └───────┬───────┘  │
-│                                                          │          │
-│  ┌─────────────────┐    ┌──────────────────┐             │          │
-│  │  Embedding      │───▶│  Gemini API      │             │          │
-│  │  Service        │    │  (batchEmbed)    │             │          │
-│  └─────────────────┘    └──────────────────┘             │          │
-└─────────────────────────────────────────────────────────┼───────────┘
-                                                          │
-                                                          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    External Services                                │
-│                                                                     │
-│  ┌─────────────────┐    ┌──────────────────┐    ┌───────────────┐  │
-│  │  Pinecone       │    │  Google Gemini   │    │  ServiceNow   │  │
-│  │  Vector DB      │    │  Embeddings      │    │  REST API     │  │
-│  │  (1024-dim)     │    │  (1024-dim)      │    │  (OAuth2)     │  │
-│  └─────────────────┘    └──────────────────┘    └───────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
----
+# ServiceNow AI Plugin — Step-by-Step Setup Guide
 
 ## Prerequisites
 
-| Requirement | Details | How to Verify |
-|-------------|---------|---------------|
-| Java 17+ | OpenJDK or Oracle JDK | `java -version` |
-| Maven 3.8+ | Build tool | `mvn -version` |
-| ServiceNow Developer Instance | Free tier OK | `https://dev440425.service-now.com` |
-| Google Cloud Project | For Gemini API | Console: `console.cloud.google.com` |
-| Pinecone Account | Free tier OK | `app.pinecone.io` |
-| Node.js 18+ | For Cloudflare tunnel | `node -v` |
-| Git | Version control | `git --version` |
+Before starting, ensure:
+1. Backend is running: `http://localhost:8080/actuator/health` returns `{"status":"UP"}`
+2. Cloudflare Tunnel is running (see below)
+3. You have ServiceNow admin access
 
 ---
 
-## Backend Setup
+## Step 0: Cloudflare Tunnel Setup
 
-### Step 1: Clone the Repository
+Since the app is running locally and ServiceNow needs to reach it from the cloud, we need a public URL.
 
-```bash
-git clone https://github.com/latecoder10/servicenow-ai-deflection-plugin.git
-cd servicenow-ai-deflection-plugin/service-desk-ai-platform-backend
-```
-
-### Step 2: Configure Environment Variables
-
-Create `.env` file in the project root:
-
-```env
-# Google Gemini API Key
-GOOGLE_AI_API_KEY=your_gemini_api_key_here
-
-# Pinecone Configuration
-PINECONE_API_KEY=your_pinecone_api_key_here
-PINECONE_INDEX_NAME=servicedesk-knowledge
-PINECONE_NAMESPACE=default
-
-# ServiceNow Configuration
-SERVICENOW_INSTANCE_URL=https://dev440425.service-now.com
-SERVICENOW_USERNAME=your_servicenow_username
-SERVICENOW_PASSWORD=your_servicenow_password
-SERVICENOW_CLIENT_ID=your_oauth_client_id
-SERVICENOW_CLIENT_SECRET=your_oauth_client_secret
-
-# Server Configuration
-SERVER_PORT=8080
-```
-
-### Step 3: Build the Project
-
-```bash
-mvn clean install -DskipTests
-```
-
-### Step 4: Start the Backend
-
-```bash
-mvn spring-boot:run -pl api
-```
-
-Verify it's running:
-```
-http://localhost:8080/actuator/health
-```
-
-Expected response:
-```json
-{"status":"UP"}
-```
-
----
-
-## External Services Configuration
-
-### A. Google Gemini API (Embeddings)
-
-1. Go to Google AI Studio: `https://aistudio.google.com/apikey`
-2. Create an API key
-3. Add to `.env`: `GOOGLE_AI_API_KEY=your_key`
-
-**Model:** `gemini-embedding-001` (1024 dimensions)
-
-### B. Pinecone (Vector Database)
-
-1. Sign up at `https://app.pinecone.io`
-2. Create index:
-   - Name: `servicedesk-knowledge`
-   - Dimension: `1024`
-   - Metric: `cosine`
-3. Copy API key to `.env`: `PINECONE_API_KEY=your_key`
-
-### C. ServiceNow OAuth2
-
-1. Log in to ServiceNow: `https://dev440425.service-now.com`
-2. Navigate to **System OAuth > Application Registry**
-3. Click **New**
-4. Select **Create an OAuth API endpoint**
-5. Fill in:
-   - Name: `AI Service Desk`
-   - Client ID: (auto-generated)
-   - Client Secret: (auto-generated)
-6. Copy credentials to `.env`
-
-**Required Scopes:**
-- `incident_table`
-- `sys_user_table`
-
----
-
-## Data Ingestion
-
-### Step 1: Load Synthetic Data
-
-The project includes 20 synthetic IT support incidents. Load them into ServiceNow:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/knowledge/load-synthetic
-```
-
-Expected response:
-```json
-{
-  "loaded": 20,
-  "status": "success"
-}
-```
-
-### Step 2: Sync to Vector Database
-
-Trigger a knowledge sync from ServiceNow to Pinecone:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/knowledge/sync
-```
-
-This will:
-1. Fetch incidents from ServiceNow
-2. Chunk text into 512-token segments
-3. Generate embeddings via Gemini batch API
-4. Upsert vectors to Pinecone in batches of 96
-
-**Vector ID Format:** `sn-{sysId}-{chunkIndex}`
-
-### Step 3: Verify Vector Count
-
-```bash
-curl http://localhost:8080/api/v1/analytics/vector-count
-```
-
-Expected: ~200-400 vectors (10-20 chunks per incident)
-
-### Step 4: Test Search
-
-```bash
-curl "http://localhost:8080/api/v1/suggestions/resolve" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "VPN not working", "maxResults": 3}'
-```
-
-Expected: JSON with similar incidents and relevance scores
-
----
-
-## Cloudflare Tunnel Setup
-
-### Step 1: Install Cloudflare Tunnel
+### Install cloudflared
 
 ```bash
 npm install -g cloudflared
@@ -234,62 +21,100 @@ npm install -g cloudflared
 
 Or download from: `https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/`
 
-### Step 2: Start the Tunnel
+### Start the Tunnel
 
 ```bash
 cloudflared tunnel --url http://localhost:8080
 ```
 
-This will display a URL like:
+This displays a URL like:
 ```
 https://sciences-tap-museum-insulation.trycloudflare.com
 ```
 
-**IMPORTANT:** This URL changes on each restart. You'll need to update ServiceNow when it changes.
+### Verify Tunnel Works
 
-### Step 3: Verify Tunnel
-
-Open the tunnel URL in browser:
+Open in browser:
 ```
 https://sciences-tap-museum-insulation.trycloudflare.com/actuator/health
 ```
 
 Should return: `{"status":"UP"}`
 
----
-
-## ServiceNow Plugin Setup
-
-### Overview
-
-The plugin consists of:
-1. **Script Include** - Server-side code that calls the AI backend
-2. **Client Script** - Browser-side code that triggers on description changes
-3. **Service Portal Widget** (optional) - Visual dashboard for suggestions
+**Note:** This URL changes on each restart. Update ServiceNow when it changes.
 
 ---
 
-### Part A: Create Script Include
+## Phase 1: ServiceNow Backend
 
-The Script Include is a server-side script that GlideAjax calls from the browser.
+### Step 1: Create REST Message
 
 1. Log in to ServiceNow: `https://dev440425.service-now.com`
-2. In the **filter navigator** (top-left search box), type: `Script Includes`
-3. Click **System Definition > Script Includes**
-4. Click **New** button (top-right corner)
-5. Fill in these fields exactly:
+2. In filter navigator, type: `REST Message`
+3. Navigate to: **System Web Services > Outbound > REST Message**
+4. Click **New**
+5. Fill in:
+
+| Field | Value |
+|-------|-------|
+| **Name** | `AI_ServiceDesk_Suggest` |
+| **Endpoint** | `https://sciences-tap-museum-insulation.trycloudflare.com` |
+| **Authentication** | `No Authentication` |
+| **Content Type** | `application/json` |
+
+6. In the **HTTP Methods** related list, click **New**:
+
+| Field | Value |
+|-------|-------|
+| **Name** | `getSuggestions` |
+| **HTTP Method** | `POST` |
+| **Endpoint** | `https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve` |
+
+7. Add **HTTP Request Headers**:
+
+| Name | Value |
+|------|-------|
+| `Content-Type` | `application/json` |
+
+8. Add **HTTP Request Query Parameter**:
+
+| Name | Value |
+|------|-------|
+| `title` | `${title}` |
+| `description` | `${description}` |
+
+9. Set **HTTP Request Body**:
+
+```json
+{
+  "title": "${title}",
+  "description": "${description}",
+  "minConfidenceThreshold": 70
+}
+```
+
+10. Click **Submit**
+
+---
+
+### Step 2: Create Script Include
+
+1. In filter navigator, type: `Script Includes`
+2. Navigate to: **System Definition > Script Includes**
+3. Click **New**
+4. Fill in:
 
 | Field | Value |
 |-------|-------|
 | **Name** | `AIServiceDeskClient` |
-| **API Name** | `global.AIServiceDeskClient` (should auto-populate) |
+| **API Name** | `global.AIServiceDeskClient` |
 | **Description** | `AI Service Desk - Get Suggestions` |
 | **Active** | ☑ Checked |
-| **Client callable** | ☑ **MUST BE CHECKED** |
+| **Client Callable** | ☑ **MUST BE CHECKED** |
 | **Accessible from** | `All application scopes` |
 | **Use sandbox script** | ☐ Unchecked |
 
-6. In the **Script** field, paste this EXACT code:
+5. Paste this EXACT code in the **Script** field:
 
 ```javascript
 var AIServiceDeskClient = Class.create();
@@ -335,32 +160,180 @@ AIServiceDeskClient.prototype = Object.extendsObject(AbstractAjaxProcessor, {
 });
 ```
 
-7. Click **Submit**
+6. Click **Submit**
 
-**IMPORTANT:** If you don't see "Client callable" checkbox, look for "Accessible from" field and set it to `All application scopes`.
+**Note:** If "Client callable" checkbox is missing, look for "Accessible from" field and set it to `All application scopes`.
 
 ---
 
-### Part B: Create Client Script
+## Phase 2: Service Portal Widget
 
-The Client Script runs in the browser and calls the Script Include when the agent types.
+### Step 3: Create Portal Widget
 
-1. In the **filter navigator**, type: `Client Scripts`
-2. Click **System Definition > Client Scripts**
-3. Click **New** button (top-right corner)
-4. Fill in these fields exactly:
+1. In filter navigator, type: `Widgets`
+2. Navigate to: **Service Portal > Widgets**
+3. Click **New**
+4. Fill in:
 
 | Field | Value |
 |-------|-------|
-| **Name** | `AI - Auto Search Suggestions` |
+| **Name** | `AI Suggestion Panel` |
+| **ID** | `ai-suggestion-panel` |
+| **Active** | ☑ Checked |
+
+5. Add the following files:
+
+---
+
+#### HTML Template
+
+Paste this in the **HTML Template** tab:
+
+```html
+<div class="ai-suggestion-panel" ng-if="data.suggestions.length > 0">
+    <div class="panel-header">
+        <h3>AI Suggestions ({{data.suggestions.length}})</h3>
+    </div>
+    <div class="suggestion-card" ng-repeat="s in data.suggestions | limitTo:3">
+        <div class="card-header">
+            <span class="incident-number">{{s.incidentNumber || s.number}}</span>
+            <span class="relevance-score">{{s.relevanceScore * 100 | number:0}}%</span>
+        </div>
+        <div class="card-title">{{s.title || s.short_description}}</div>
+        <div class="card-resolution" ng-if="s.resolution">
+            <strong>Resolution:</strong> {{s.resolution | limitTo:200}}
+        </div>
+        <div class="card-actions">
+            <button class="btn btn-success btn-sm" ng-click="applyResolution(s)">
+                Apply Resolution
+            </button>
+            <button class="btn btn-default btn-sm" ng-click="dismissCard($index)">
+                Dismiss
+            </button>
+        </div>
+    </div>
+</div>
+```
+
+---
+
+#### CSS Styles
+
+Paste this in the **CSS** tab:
+
+```css
+.ai-suggestion-panel {
+    margin: 15px 0;
+    padding: 15px;
+    background: #f0f4ff;
+    border: 1px solid #667eea;
+    border-radius: 8px;
+    font-family: 'ServiceNow', sans-serif;
+}
+
+.panel-header h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+    font-size: 16px;
+}
+
+.suggestion-card {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.incident-number {
+    color: #667eea;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.relevance-score {
+    background: #28a745;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+}
+
+.card-title {
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+.card-resolution {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 10px;
+}
+
+.card-actions {
+    display: flex;
+    gap: 8px;
+}
+```
+
+---
+
+#### Client Script (AngularJS)
+
+Paste this in the **Client Script** tab:
+
+```javascript
+api.controller = function($scope, $timeout) {
+    var c = this;
+    $scope.data = c.data;
+    $scope.data.suggestions = [];
+
+    $scope.applyResolution = function(suggestion) {
+        var resolution = suggestion.resolution || suggestion.resolutionNotes || '';
+        var current = g_form.getValue('resolution_notes') || '';
+        var newResolution = current ? current + '\n\n--- AI Suggested ---\n' + resolution : resolution;
+        g_form.setValue('resolution_notes', newResolution);
+        g_form.setValue('state', '6');
+        g_form.setValue('close_code', 'Closed/Resolved by Caller');
+        g_form.addInfoMessage('AI resolution applied from ' + (suggestion.incidentNumber || suggestion.number));
+    };
+
+    $scope.dismissCard = function(index) {
+        $scope.data.suggestions.splice(index, 1);
+    };
+};
+```
+
+6. Click **Submit**
+
+---
+
+## Phase 3: Form Integration
+
+### Step 4: Add Client Script to Incident Form
+
+1. In filter navigator, type: `Client Scripts`
+2. Navigate to: **System Definition > Client Scripts**
+3. Click **New**
+4. Fill in:
+
+| Field | Value |
+|-------|-------|
+| **Name** | `AI_Suggestion_On_Type` |
 | **Table** | `Incident [incident]` |
 | **Type** | `onChange` |
-| **Field name** | `short_description` |
+| **Field name** | `description` |
 | **Active** | ☑ Checked |
-| **UI Type** | `All` (or `Desktop` if All is not available) |
+| **UI Type** | `All` |
 | **Global** | ☑ Checked |
 
-5. In the **Script** field, paste this EXACT code:
+5. Paste this EXACT code in the **Script** field:
 
 ```javascript
 function onChange(control, oldValue, newValue, isLoading) {
@@ -498,116 +471,53 @@ function getOrCreateContainer() {
 
 ---
 
-### Part C: Service Portal Widget (Optional)
+### Step 5: Add Widget to Incident Form
 
-For a richer experience, create a Service Portal widget.
+Choose one option:
 
-#### HTML Template
+**Option A: Add via UI Macro on the form header**
+1. Navigate to: **System UI > UI Macros**
+2. Create a new macro that includes the widget
+3. Add it to the Incident form header
 
-Create a new widget or use this HTML:
+**Option B: Add via Agent Workspace widget panel**
+1. Open Agent Workspace
+2. Edit the Incident form layout
+3. Add the `ai-suggestion-panel` widget to the form
 
-```html
-<div class="ai-suggestion-panel" ng-if="data.suggestions.length > 0">
-    <div class="panel-header">
-        <h3>AI Suggestions ({{data.suggestions.length}})</h3>
-    </div>
-    <div class="suggestion-card" ng-repeat="s in data.suggestions | limitTo:3">
-        <div class="card-header">
-            <span class="incident-number">{{s.incidentNumber || s.number}}</span>
-            <span class="relevance-score">{{s.relevanceScore * 100 | number:0}}%</span>
-        </div>
-        <div class="card-title">{{s.title || s.short_description}}</div>
-        <div class="card-resolution" ng-if="s.resolution">
-            <strong>Resolution:</strong> {{s.resolution | limitTo:200}}
-        </div>
-        <div class="card-actions">
-            <button class="btn btn-success btn-sm" ng-click="applyResolution(s)">
-                Apply Resolution
-            </button>
-            <button class="btn btn-default btn-sm" ng-click="dismissCard($index)">
-                Dismiss
-            </button>
-        </div>
-    </div>
-</div>
+**Option C: Add via Service Portal page**
+1. Navigate to: **Service Portal > Pages**
+2. Edit the Incident form page
+3. Add the `ai-suggestion-panel` widget
+
+---
+
+## Phase 4: User Flow
+
 ```
-
-#### CSS Styles
-
-```css
-.ai-suggestion-panel {
-    margin: 15px 0;
-    padding: 15px;
-    background: #f0f4ff;
-    border: 1px solid #667eea;
-    border-radius: 8px;
-    font-family: 'ServiceNow', sans-serif;
-}
-
-.panel-header h3 {
-    margin: 0 0 15px 0;
-    color: #333;
-    font-size: 16px;
-}
-
-.suggestion-card {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 10px;
-}
-
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
-}
-
-.incident-number {
-    color: #667eea;
-    font-weight: 600;
-    font-size: 12px;
-}
-
-.relevance-score {
-    background: #28a745;
-    color: white;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-}
-
-.card-title {
-    font-weight: 500;
-    margin-bottom: 8px;
-}
-
-.card-resolution {
-    font-size: 13px;
-    color: #555;
-    margin-bottom: 10px;
-}
-
-.card-actions {
-    display: flex;
-    gap: 8px;
-}
+User types description
+        |
+        v
+Debounced (1.5s wait)
+        |
+        v
+Script Include calls our API
+        |
+        v
+Returns similar incidents + resolutions
+        |
+        v
+Widget displays suggestion cards
+        |
+        v
+User clicks "Apply Resolution" or "Submit Anyway"
 ```
 
 ---
 
-## Testing the Integration
+## Testing
 
-### Test 1: Backend Health Check
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-Expected: `{"status":"UP"}`
-
-### Test 2: Tunnel Health Check
+### Test 1: Verify Backend is Reachable
 
 ```bash
 curl https://sciences-tap-museum-insulation.trycloudflare.com/actuator/health
@@ -615,25 +525,25 @@ curl https://sciences-tap-museum-insulation.trycloudflare.com/actuator/health
 
 Expected: `{"status":"UP"}`
 
-### Test 3: API Search Test
+### Test 2: Verify API Returns Suggestions
 
 ```bash
-curl "http://localhost:8080/api/v1/suggestions/resolve" \
+curl "https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve" \
   -H "Content-Type: application/json" \
   -d '{"query": "VPN not working", "maxResults": 3}'
 ```
 
 Expected: JSON response with similar incidents
 
-### Test 4: ServiceNow Integration
+### Test 3: Test in ServiceNow
 
 1. Open ServiceNow: `https://dev440425.service-now.com`
-2. Navigate to **Incidents > Create New**
-3. In **Short description**, type: `VPN not working`
+2. Navigate to: **Incidents > Create New**
+3. In **Description** field, type: `VPN not working`
 4. Wait 2 seconds
 5. **Expected:** Blue panel appears with suggestions
 
-### Test 5: Check Console Logs
+### Test 4: Check Console Logs
 
 1. Press F12 in browser
 2. Click **Console** tab
@@ -644,76 +554,39 @@ Expected: JSON response with similar incidents
 
 ## Troubleshooting
 
-### Problem: Backend Won't Start
-
-**Symptoms:** `mvn spring-boot:run` fails
-
-**Fix:**
-1. Check `.env` file has all required variables
-2. Verify Java version: `java -version`
-3. Check port 8080 isn't in use: `netstat -ano | findstr :8080`
-
-### Problem: Pinecone Connection Failed
-
-**Symptoms:** `Failed to connect to Pinecone`
-
-**Fix:**
-1. Verify `PINECONE_API_KEY` in `.env`
-2. Check index name matches: `servicedesk-knowledge`
-3. Verify dimension is 1024
-
-### Problem: Gemini Embedding Error
-
-**Symptoms:** `Failed to generate embeddings`
-
-**Fix:**
-1. Verify `GOOGLE_AI_API_KEY` in `.env`
-2. Check API quota not exceeded
-3. Verify model: `gemini-embedding-001`
-
-### Problem: ServiceNow 403 Error
-
-**Symptoms:** `API returned status 403`
-
-**Fix:**
-1. Verify OAuth credentials in `.env`
-2. Check user has required roles
-3. Verify REST message is active
-
-### Problem: No Blue Panel in ServiceNow
-
-**Symptoms:** Type description but nothing happens
+### Problem: No blue panel appears
 
 **Check 1: Browser Console**
 1. Press F12
 2. Click Console tab
 3. Look for red errors
-4. Verify `xmlhttp` calls appear
+4. Tell me what you see
 
 **Check 2: Script Include Settings**
 1. Go to **System Definition > Script Includes**
 2. Open `AIServiceDeskClient`
 3. Verify:
    - **Active** = ☑
-   - **Client callable** = ☑
+   - **Client Callable** = ☑
    - **Accessible from** = `All application scopes`
 
 **Check 3: Client Script Settings**
 1. Go to **System Definition > Client Scripts**
-2. Open `AI - Auto Search Suggestions`
+2. Open `AI_Suggestion_On_Type`
 3. Verify:
    - **Active** = ☑
    - **Type** = onChange
-   - **Field name** = short_description
+   - **Field name** = description
+   - **Table** = Incident [incident]
 
-### Problem: "Client callable" Checkbox Missing
+### Problem: "Client callable" checkbox not visible
 
 In some ServiceNow versions:
 1. Look for **"Accessible from"** field
 2. Set to **"All application scopes"**
 3. This has the same effect
 
-### Problem: Cloudflare Tunnel URL Changed
+### Problem: Cloudflare tunnel URL changed
 
 Cloudflare tunnels generate new URLs on restart:
 
@@ -725,87 +598,45 @@ Cloudflare tunnels generate new URLs on restart:
    - Replace with new URL
    - Click **Update**
 
----
+### Problem: Error in System Logs
 
-## Key Files Reference
-
-| File | Location | Purpose |
-|------|----------|---------|
-| `.env` | Project root | Environment variables |
-| `AppConstants.java` | `domain/src/main/java/.../domain/` | Centralized constants |
-| `PineconeVectorAdapter.java` | `integration/pinecone/...` | Vector DB operations |
-| `SpringAiEmbeddingAdapter.java` | `integration/llm/...` | Gemini embeddings |
-| `ServiceNowRestAdapter.java` | `integration/servicenow/...` | ServiceNow API calls |
-| `ServiceNowKnowledgeConnector.java` | `application/connector/...` | Knowledge sync |
-| `SyntheticDataLoader.java` | `application/service/...` | Sample data loader |
-| `SuggestionEngineService.java` | `application/service/...` | Suggestion logic |
-| `SERVICENOW-SETUP-GUIDE.md` | `servicenow-plugin/` | This guide |
+1. Go to **System Logs > All**
+2. Filter by message containing `[AI Service Desk]`
+3. Look for error messages
 
 ---
 
-## API Endpoints
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/actuator/health` | GET | Health check |
-| `/api/v1/suggestions/resolve` | POST | Get suggestions |
-| `/api/v1/knowledge/search` | GET | Search knowledge base |
-| `/api/v1/knowledge/sync` | POST | Sync to vector DB |
-| `/api/v1/knowledge/load-synthetic` | POST | Load sample data |
-| `/api/v1/analytics/vector-count` | GET | Count vectors |
-
----
-
-## Configuration Constants
-
-All constants are centralized in `AppConstants.java`:
-
-```java
-public final class AppConstants {
-    // Vector ID prefix
-    public static final String VECTOR_ID_PREFIX = "sn-";
-    
-    // Collection names
-    public static final String DEFAULT_NAMESPACE = "default";
-    public static final String KNOWLEDGE_COLLECTION = "knowledge";
-    
-    // Batch sizes
-    public static final int EMBEDDING_BATCH_SIZE = 100;
-    public static final int UPSERT_BATCH_SIZE = 96;
-    
-    // Text processing
-    public static final int CHUNK_SIZE = 512;
-    public static final int CHUNK_OVERLAP = 50;
-    
-    // Similarity threshold
-    public static final double MIN_RELEVANCE_SCORE = 0.7;
-}
-```
-
----
-
-## Quick Reference Card
+## Quick Reference
 
 | Item | Value |
 |------|-------|
-| Backend URL | `http://localhost:8080` |
+| ServiceNow Instance | `https://dev440425.service-now.com` |
 | Tunnel URL | `https://sciences-tap-museum-insulation.trycloudflare.com` |
-| ServiceNow | `https://dev440425.service-now.com` |
-| Script Include | `AIServiceDeskClient` |
-| Client Script | `AI - Auto Search Suggestions` |
-| Trigger Field | `short_description` |
+| REST Message Name | `AI_ServiceDesk_Suggest` |
+| Script Include Name | `AIServiceDeskClient` |
+| Client Script Name | `AI_Suggestion_On_Type` |
+| Portal Widget Name | `AI Suggestion Panel` |
+| Trigger Field | `description` |
 | Min Characters | 10 |
-| Delay | 1.5 seconds |
-| Embedding Model | `gemini-embedding-001` |
-| Vector Dimension | 1024 |
-| Pinecone Index | `servicedesk-knowledge` |
+| Delay Before Search | 1.5 seconds |
+| API Endpoint | `/api/v1/suggestions/resolve` |
 
 ---
 
-## Need Help?
+## File Locations
 
-1. Check backend logs: `logs/servicedesk-ai.log`
-2. Check ServiceNow System Logs: Filter by `[AI Service Desk]`
-3. Check browser Console (F12)
-4. Verify all services are running
-5. Report issues with screenshots and error messages
+All plugin files are saved locally at:
+```
+D:\POC\ai-service-desk-knowledge-intelligence-platform\service-desk-ai-platform-backend\servicenow-plugin\
+```
+
+| File | Purpose |
+|------|---------|
+| `01-script-include.js` | Script Include code |
+| `02-client-script.js` | Client Script code |
+| `03-rest-message.json` | REST Message configuration |
+| `widget/html-template.html` | Portal Widget HTML |
+| `widget/css-styles.css` | Portal Widget CSS |
+| `widget/client-script.js` | Portal Widget AngularJS |
+| `README.md` | Quick reference |
+| `SERVICENOW-SETUP-GUIDE.md` | This guide |
