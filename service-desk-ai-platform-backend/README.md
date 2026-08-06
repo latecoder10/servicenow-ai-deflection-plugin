@@ -36,6 +36,10 @@ You also need API keys for:
 
 ## Quick Setup (3 Steps)
 
+> **Important:** The app runs with the `dev` profile by default (`spring.profiles.active: dev` in `application.yml`). In dev mode, **all authentication is disabled** so you can call endpoints directly without JWT tokens.
+
+> **Note on setup scripts:** `setup.sh` is portable. `setup.bat` has hardcoded paths for Java and PostgreSQL -- edit the `JAVA_HOME` and `psql.exe` paths if yours differ.
+
 ### Step 1: Copy the environment template
 
 ```bash
@@ -96,8 +100,9 @@ curl http://localhost:8080/api/v1/health
 # Swagger UI (interactive API docs)
 # Open in browser: http://localhost:8080/swagger-ui.html
 
-# Prometheus metrics
-curl http://localhost:8081/actuator/prometheus
+# Actuator endpoints (health, metrics, prometheus) - all on same port
+curl http://localhost:8080/actuator/health
+curl http://localhost:8080/actuator/prometheus
 ```
 
 ---
@@ -182,45 +187,113 @@ curl -X POST http://localhost:8080/api/v1/suggestions/resolve \
 
 ```
 service-desk-ai-platform-backend/
-├── pom.xml                          # Parent POM (multi-module)
-├── .env.example                     # Environment template
-├── .env.local                       # Your local secrets (git-ignored)
-├── docker-compose.yml               # Postgres + Redis + Prometheus + Grafana
-├── setup.sh / setup.bat             # One-click setup scripts
-├── openapi.yaml                     # OpenAPI 3.0 spec
-├── postman/                         # Postman collection
-├── servicenow-plugin/               # ServiceNow portal widget + scripts
 │
-├── modules/
-│   ├── api/                         # REST controllers + Spring Boot entry point
-│   ├── application/                 # Business logic services (suggestion engine, sync, confidence)
-│   ├── domain/                      # Entities, models, repository interfaces
-│   ├── common/                      # Exceptions, base models, correlation context
-│   ├── knowledge-loader/            # Document parsers (Tika), chunking engine
-│   ├── integration/
-│   │   ├── pinecone/                # Vector DB adapter
-│   │   ├── servicenow/              # ServiceNow REST client + OAuth2
-│   │   └── llm/                     # Gemini LLM + embedding adapters
-│   ├── analytics/                   # Deflection metrics, ROI calculation
-│   ├── security/                    # JWT auth, Spring Security config
-│   └── infrastructure/              # AOP audit logger, ServiceNow sync scheduler
+├── pom.xml                              # Root Maven POM (multi-module parent)
+├── .env.example                         # Environment variable template
+├── .env.local                           # Your local secrets (git-ignored)
+├── .gitignore
+├── docker-compose.yml                   # Postgres + Redis + Prometheus + Grafana
+├── setup.sh / setup.bat                 # One-click setup scripts
+├── openapi.yaml                         # OpenAPI 3.0 spec
+├── ARCHITECTURE.md                      # Architecture documentation
+├── POC_DOCUMENTATION.md                 # POC documentation
 │
-└── infra/                           # Prometheus config
+├── img/img.png                          # Project image
+├── infra/prometheus.yml                 # Prometheus scrape config
+├── postman/                             # Postman collection
+│   └── AI-Service-Desk-Platform.postman_collection.json
+├── scripts/docs/                        # Doc generation utilities
+│   └── generate_architecture_doc.py
+│
+├── servicenow-plugin/                   # ServiceNow portal widget + scripts
+│   ├── 01-script-include.js             # Server-side Script Include
+│   ├── 02-client-script.js              # Client Script for ticket form
+│   ├── 03-rest-message.json             # REST Message config
+│   ├── SERVICENOW-SETUP-GUIDE.md        # Step-by-step ServiceNow guide
+│   └── widget/                          # Service Portal Widget
+│       ├── html-template.html
+│       ├── css-styles.css
+│       └── client-script.js
+│
+└── modules/                             # ====== JAVA MODULES ======
+    │
+    ├── api/                             # [ENTRY POINT] REST controllers + Spring Boot main()
+    │   ├── src/main/java/.../api/
+    │   │   ├── ServiceDeskAiApplication.java
+    │   │   ├── controller/              # 8 REST controllers
+    │   │   ├── dto/                     # Request/Response DTOs
+    │   │   └── exception/               # Global exception handler
+    │   ├── src/main/resources/
+    │   │   ├── application.yml           # All config (DB, AI, ServiceNow, scheduler)
+    │   │   ├── data/synthetic-incidents.json
+    │   │   └── db/changelog/            # Liquibase schema migrations
+    │   └── src/test/                    # Tests
+    │
+    ├── application/                     # Business logic layer
+    │   └── src/main/java/.../application/
+    │       ├── connector/               # KnowledgeConnectorRegistry, ServiceNowConnector
+    │       ├── port/in/                 # Use case interfaces (CQRS commands)
+    │       └── service/                 # SuggestionEngine, ConfidenceCalculator, SyncOrchestrator, SyntheticDataLoader
+    │
+    ├── domain/                          # Domain layer (entities, models, repos)
+    │   └── src/main/java/.../domain/
+    │       ├── entity/                  # 11 JPA entities (KnowledgeDocument, SyncJob, etc.)
+    │       ├── model/                   # Domain models (Incident, ResolutionSuggestion, ConfidenceScore)
+    │       ├── event/                   # Domain events
+    │       ├── repository/              # 8 JPA repository interfaces
+    │       └── util/                    # TextChunker, KnowledgeRecordUtils
+    │
+    ├── common/                          # Shared exceptions and base models
+    │   └── src/main/java/.../common/
+    │       ├── exception/               # DomainException, IntegrationException, ResourceNotFoundException
+    │       └── model/                   # BaseEntity, AuditableEntity, ProblemDetails, CorrelationContext
+    │
+    ├── knowledge-loader/                # Document parsing and chunking
+    │   └── src/main/java/.../loader/
+    │       ├── parser/                  # Tika-based DocumentParserFactory, TextDocumentParser
+    │       └── chunking/                # SlidingWindowChunker, ChunkingEngine
+    │
+    ├── integration/                     # External system adapters
+    │   ├── llm/                         # Spring AI Gemini adapter + RerankingEngine
+    │   │   └── src/.../llm/
+    │   │       ├── config/              # LlmConfig, EmbeddingConfig
+    │   │       ├── SpringAiLlmAdapter.java
+    │   │       ├── SpringAiEmbeddingAdapter.java
+    │   │       └── RerankingEngine.java
+    │   ├── pinecone/                    # Pinecone vector DB adapter
+    │   │   └── src/.../pinecone/
+    │   │       ├── config/PineconeConfig.java
+    │   │       ├── PineconeVectorAdapter.java
+    │   │       └── PineconeIndexResolver.java
+    │   └── servicenow/                  # ServiceNow REST client + OAuth2
+    │       └── src/.../servicenow/
+    │           ├── client/              # ServiceNowConfig, ServiceNowOAuth2Client
+    │           └── ServiceNowRestAdapter.java
+    │
+    ├── analytics/                       # Deflection metrics and ROI
+    │   └── src/.../analytics/
+    │       ├── model/DeflectionMetrics.java
+    │       └── service/DeflectionAnalyticsService.java
+    │
+    ├── security/                        # JWT auth and Spring Security
+    │   └── src/.../security/
+    │       ├── config/                  # SecurityConfig (prod), SecurityDevConfig (dev - no auth)
+    │       └── jwt/                     # JwtTokenProvider, JwtAuthenticationFilter
+    │
+    └── infrastructure/                  # Scheduling and AOP
+        └── src/.../infrastructure/
+            ├── scheduler/               # ServiceNowSyncScheduler (cron-based)
+            └── aspect/                  # AuditLogAspect
 ```
 
 ---
 
 ## Docker Compose (Optional)
 
-If you prefer containers for infrastructure services (Postgres, Redis, Prometheus, Grafana):
+The `docker-compose.yml` can spin up infrastructure services (Postgres, Redis, Prometheus, Grafana). There is no Dockerfile in the project -- the Java app runs locally.
 
 ```bash
-# Set your API keys
-export GEMINI_API_KEY=your-key
-export AI_PINECONE_API_KEY=your-key
-export AI_PINECONE_HOST=your-host
-
-# Start infrastructure
+# Start infrastructure only (Postgres, Redis, Prometheus, Grafana)
 docker-compose up -d postgres redis prometheus grafana
 
 # Then run the Java app locally (it connects to the containerized Postgres)
