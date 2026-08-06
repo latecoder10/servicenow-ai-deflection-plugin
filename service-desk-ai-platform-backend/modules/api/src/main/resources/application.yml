@@ -73,8 +73,8 @@ ai:
     model-name: gemini-embedding-001
     dimension: 1024
   pinecone:
-    api-key: ${AI_PINECONE_API_KEY:pcsk_6rhLgt_9dRvGj8nmxBgiRGybF22SGtZmak3U99snhmEXJy3tp6GAdjWVHZhGwmtpbkq9V}
-    host: ${AI_PINECONE_HOST:servicedesk-knowledge-7hsstp4.svc.aped-4627-b74a.pinecone.io}
+    api-key: ${AI_PINECONE_API_KEY:}
+    host: ${AI_PINECONE_HOST:}
     index-name: servicedesk-knowledge
     dimension: 1024
     namespace-prefix: ""
