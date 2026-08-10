@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  ============================================================
+  AI Resolution Popup - UI Page
+  ============================================================
+  
+  ServiceNow Configuration:
+    Name:  ai_resolution_popup
+  
+  Fully qualified name (example scope):
+    x_2185757_ai_tic_0_ai_resolution_popup
+  
+  Purpose:
+    Displays the AI resolution suggestion in a GlideModal.
+    Receives data from the Client Script via setPreference().
+  
+  Data Flow:
+    Client Script
+        |  gm.setPreference('sysparm_summary', ...)
+        |  gm.setPreference('sysparm_steps', ...)
+        |  gm.setPreference('sysparm_code', ...)
+        |  gm.render()
+        v
+    GlideModal opens this UI Page
+        |
+        v
+    Jelly reads RP.getWindowProperties()
+        |
+        v
+    Renders summary, steps, and code snippet
+  ============================================================
+-->
+<jelly trim="false"
+       xmlns:j="jelly:core"
+       xmlns:g="glide"
+       xmlns:j2="null"
+       xmlns:g2="null">
+
+    <style>
+        .ai-popup-container {
+            padding: 15px;
+            font-family: Arial, sans-serif;
+        }
+
+        .ai-summary {
+            font-size: 14px;
+            font-weight: bold;
+            color: #293e40;
+            margin-bottom: 12px;
+            background: #eef7f8;
+            padding: 10px;
+            border-left: 4px solid #1f778a;
+            border-radius: 4px;
+        }
+
+        .ai-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 10px;
+            margin-bottom: 5px;
+            color: #4b5563;
+        }
+
+        .ai-text-block {
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-line;
+            padding-left: 5px;
+            color: #333333;
+        }
+
+        .ai-code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+
+    <div class="ai-popup-container">
+
+        <div class="ai-summary">
+            <j:out value="${RP.getWindowProperties().get('sysparm_summary')}" />
+        </div>
+
+        <div class="ai-title">
+            Recommended Steps:
+        </div>
+
+        <div class="ai-text-block">
+            <j:out value="${RP.getWindowProperties().get('sysparm_steps')}" />
+        </div>
+
+        <j:set var="jvar_code_val"
+               value="${RP.getWindowProperties().get('sysparm_code')}" />
+
+        <j:if test="${jvar_code_val != null}">
+            <j:if test="${jvar_code_val != ''}">
+                <div class="ai-title">
+                    Terminal Command / Snippet:
+                </div>
+
+                <div class="ai-code-block">
+                    <j:out value="${jvar_code_val}" />
+                </div>
+            </j:if>
+        </j:if>
+
+    </div>
+
+</jelly>
