@@ -1,73 +1,71 @@
-var AIServiceDeskClient = Class.create();
-AIServiceDeskClient.prototype = Object.extendsObject(AbstractAjaxProcessor, {
+/**
+ * ============================================================
+ * AI Deflection Engine - Script Include (Server-Side)
+ * ============================================================
+ *
+ * ServiceNow Configuration:
+ *   Name:                AIDeflectionBroker
+ *   Client Callable:     Yes (Glide AJAX enabled)
+ *   Accessible from:     All application scopes
+ *   Active:              TRUE
+ *
+ * Scope:                x_2185757_ai_tic_0
+ *   (your instance may generate a different scope)
+ *
+ * Purpose:              Server-side broker that calls the
+ *                       Spring Boot REST API and returns
+ *                       the JSON response to the Client Script.
+ *
+ * Flow:
+ *   Client Script
+ *       |  GlideAjax
+ *       v
+ *   AIDeflectionBroker.getResolution()
+ *       |  RESTMessageV2
+ *       v
+ *   Spring Boot POST /api/v1/suggestions/resolve
+ *       |
+ *       v
+ *   JSON response returned to Client Script
+ * ============================================================
+ */
 
-    getSuggestions: function() {
+var AIDeflectionBroker = Class.create();
+AIDeflectionBroker.prototype = Object.extendsObject(global.AbstractAjaxProcessor, {
+
+    getResolution: function() {
+        var title = this.getParameter('sysparm_title');
         var description = this.getParameter('sysparm_description');
-        var category = this.getParameter('sysparm_category') || '';
-
-        if (!description || description.trim().length === 0) {
-            return JSON.stringify({ suggestions: [], message: 'No description provided' });
-        }
+        var email = gs.getUser().getEmail() || "anonymous@company.com";
 
         try {
-            var restMessage = new sn_ws.RESTMessageV2();
-            restMessage.setEndpoint('https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve');
-            restMessage.setHttpMethod('POST');
-            restMessage.setRequestHeader('Content-Type', 'application/json');
-            restMessage.setHttpTimeout(10000);
+            var request = new sn_ws.RESTMessageV2(
+                'x_2185757_ai_tic_0.Spring Boot Deflection API',
+                'resolve'
+            );
 
-            var body = {
-                title: description.substring(0, 100),
-                description: description,
-                minConfidenceThreshold: 70
-            };
-            if (category) body.category = category;
+            request.setStringParameterNoEscape('title', title);
+            request.setStringParameterNoEscape('description', description);
+            request.setStringParameterNoEscape('callerEmail', email);
 
-            restMessage.setRequestBody(JSON.stringify(body));
-            var response = restMessage.execute();
+            var response = request.execute();
+            var responseBody = response.getBody();
             var httpStatus = response.getStatusCode();
 
-            if (httpStatus === 200) {
-                return response.getBody();
-            } else {
-                gs.error('[AI Service Desk] API returned status ' + httpStatus);
-                return JSON.stringify({ suggestions: [], error: 'API status ' + httpStatus });
+            if (httpStatus == 200) {
+                return responseBody;
             }
-        } catch (e) {
-            gs.error('[AI Service Desk] getSuggestions failed: ' + e.getMessage());
-            return JSON.stringify({ suggestions: [], error: e.getMessage() });
+
+            return JSON.stringify({
+                "error": "API returned status code: " + httpStatus
+            });
+
+        } catch (ex) {
+            return JSON.stringify({
+                "error": "System Exception: " + ex.getMessage()
+            });
         }
     },
 
-    searchKnowledge: function() {
-        var query = this.getParameter('sysparm_query');
-        var topK = this.getParameter('sysparm_topK') || '5';
-
-        if (!query || query.trim().length === 0) {
-            return JSON.stringify({ results: [] });
-        }
-
-        try {
-            var url = 'https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/knowledge/search?query=' + encodeURIComponent(query) + '&topK=' + topK;
-            var restMessage = new sn_ws.RESTMessageV2();
-            restMessage.setEndpoint(url);
-            restMessage.setHttpMethod('GET');
-            restMessage.setRequestHeader('Content-Type', 'application/json');
-            restMessage.setHttpTimeout(10000);
-
-            var response = restMessage.execute();
-            var httpStatus = response.getStatusCode();
-
-            if (httpStatus === 200) {
-                return response.getBody();
-            } else {
-                return JSON.stringify({ results: [], error: 'API status ' + httpStatus });
-            }
-        } catch (e) {
-            gs.error('[AI Service Desk] searchKnowledge failed: ' + e.getMessage());
-            return JSON.stringify({ results: [], error: e.getMessage() });
-        }
-    },
-
-    type: 'AIServiceDeskClient'
+    type: 'AIDeflectionBroker'
 });
