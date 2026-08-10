@@ -127,6 +127,7 @@ server:
   servlet:
     context-path: /
   shutdown: graceful
+  forward-headers-strategy: framework
 
 # ──────────────────────── MANAGEMENT ────────────────────────
 management:

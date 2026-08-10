@@ -1,442 +1,2930 @@
-﻿# ServiceNow AI Service Desk - Complete Setup Walkthrough
+﻿# AI Ticket Deflection — ServiceNow Scoped Application
+## Complete Setup, Files, Scripts, Troubleshooting and End-to-End Test Record
 
-## Overview
-This guide walks you through setting up the AI Service Desk plugin in ServiceNow. When an agent types a ticket description, the system searches the knowledge base and suggests similar resolved incidents.
-
----
-
-## Prerequisites
-
-| Requirement | Status |
-|-------------|--------|
-| Backend running on `http://localhost:8080` | Verify: `http://localhost:8080/actuator/health` returns `{"status":"UP"}` |
-| Cloudflare Tunnel running | Current URL: `https://sciences-tap-museum-insulation.trycloudflare.com` |
-| ServiceNow admin access | Instance: `dev440425.service-now.com` |
-| Browser with DevTools access | Press F12 to open |
+> **Purpose:** This is the detailed ServiceNow-side implementation record for the AI Ticket Deflection plugin built around the Spring Boot API.
+>
+> The document is based on the actual ServiceNow setup/troubleshooting captured during development. It includes the configuration, exact scripts that were pasted during the build, the problems encountered, the changes made, and the final direction reached in the conversation.
+>
+> Where the conversation showed an intermediate/failed implementation, it is explicitly marked as such. Do not treat an intermediate script as the final script.
 
 ---
 
-## Step 1: Verify Backend is Reachable
+# 1. What We Are Building
 
-Open your browser and go to:
+When a user creates a new ServiceNow Incident and starts entering an issue in **Short description**, ServiceNow should asynchronously query our Spring Boot knowledge/AI backend before the user submits the ticket.
+
+The backend returns a structured suggestion such as:
+
+```json
+{
+  "suggestionId": "sug-a07f0085",
+  "queryTitle": "VPN not working",
+  "recommendedTitle": "GlobalProtect VPN Certificate & Tunnel Reset Procedure",
+  "summaryResolution": "Resolved via GlobalProtect configuration refresh and DNS cache clearing. No incident ticket needed.",
+  "stepByStepInstructions": [
+    "Step 1",
+    "Step 2",
+    "Step 3",
+    "Step 4",
+    "Step 5"
+  ],
+  "codeOrCommandSnippet": "gpconfig /refresh && ipconfig /flushdns",
+  "confidenceScore": 0.95,
+  "confidenceBand": "HIGH",
+  "deflectionSuccessful": true,
+  "sourcesCount": 5,
+  "generatedByModel": "model",
+  "createdAt": "2026-08-07T07:07:17.843Z",
+  "correlationId": "..."
+}
 ```
-https://sciences-tap-museum-insulation.trycloudflare.com/actuator/health
-```
 
-**Expected result:** You should see `{"status":"UP"}`
-
-If this fails, the tunnel is down. Restart it.
+The ServiceNow UI should show the result in a proper **native, draggable, non-blocking modal** so the Incident form itself remains usable.
 
 ---
 
-## Step 2: Create Script Include
+# 2. Target Architecture
 
-The Script Include is a server-side script that GlideAjax calls from the browser.
+```text
+                    SERVICE NOW
+                         |
+                         v
+               New Incident Form
+                         |
+                         v
+              Short Description
+                         |
+                    onChange
+                         |
+                  600 ms debounce
+                         |
+                         v
+                  Client Script
+             AI Ticket Deflection Listener
+                         |
+                      GlideAjax
+                         |
+                         v
+                  Script Include
+                 AIDeflectionBroker
+                         |
+                   REST / HTTP
+                         |
+                         v
+                  LocalTunnel
+                 (development only)
+                         |
+                         v
+                 Spring Boot API
+          POST /api/v1/suggestions/resolve
+                         |
+                         v
+              AI / Knowledge Base
+                         |
+                         v
+                 Structured JSON
+                         |
+                         v
+                  GlideAjax callback
+                         |
+                         v
+                    GlideModal
+                         |
+                         v
+               ai_resolution_popup
+                         |
+              +----------+----------+
+              |          |          |
+              v          v          v
+           Summary     Steps      Command
+```
 
-1. Log in to ServiceNow: `https://dev440425.service-now.com`
-2. In the **filter navigator** (top-left search box), type: `Script Includes`
-3. Click **System Definition > Script Includes**
-4. Click **New** button (top-right corner)
-5. Fill in these fields exactly:
+---
 
-| Field | Value |
-|-------|-------|
-| **Name** | `AIServiceDeskClient` |
-| **API Name** | `global.AIServiceDeskClient` (should auto-populate) |
-| **Description** | `AI Service Desk - Get Suggestions` |
-| **Active** | Γÿæ Checked |
-| **Client callable** | Γÿæ **MUST BE CHECKED** |
-| **Accessible from** | `All application scopes` |
-| **Use sandbox script** | ΓÿÉ Unchecked |
+# 3. ServiceNow Components
 
-6. In the **Script** field, paste this EXACT code (no modifications):
+The scoped application contains:
+
+```text
+AI Ticket Deflection
+|
++-- REST Message
+|   +-- Spring Boot Deflection API
+|       +-- resolve (POST)
+|
++-- Script Include
+|   +-- AIDeflectionBroker
+|
++-- Client Script
+|   +-- AI Ticket Deflection Listener
+|
++-- UI Page
+    +-- ai_resolution_popup
+```
+
+---
+
+# 4. Scoped Application Setup
+
+## 4.1 Open ServiceNow Studio
+
+1. Log in to the ServiceNow developer instance.
+2. Open **ServiceNow Studio** from the Application Navigator.
+3. Select **Create Application**.
+4. Choose **Create from Scratch**.
+5. Create the application with:
+
+```text
+Name:
+AI Ticket Deflection
+
+Description:
+Real-time incident deflection using external Spring Boot API.
+
+Scope:
+Scoped
+```
+
+6. ServiceNow generates the application scope automatically.
+
+The scope used during this development session was:
+
+```text
+x_2185757_ai_tic_0
+```
+
+> **Important:** The scope is instance-specific. If this application is recreated elsewhere, do not blindly copy the scope. Use the scope generated by that instance.
+
+---
+
+# 5. Creating Files Inside the Application
+
+After the application container is created, use:
+
+```text
+Create file
+```
+
+or:
+
+```text
+Create Application File
+```
+
+The files required are:
+
+```text
+REST Message
+Script Include
+Client Script
+UI Page
+```
+
+---
+
+# 6. REST Message
+
+## 6.1 Create REST Message
+
+Inside the scoped application:
+
+```text
+Create Application File
+    |
+    +-- REST Message
+```
+
+Configure:
+
+```text
+Name:
+Spring Boot Deflection API
+
+Endpoint:
+https://<active-localtunnel-domain>.loca.lt
+```
+
+During the development conversation the endpoint was represented as:
+
+```text
+https://loca.lt
+```
+
+or an active LocalTunnel URL.
+
+> **Important:** `https://loca.lt` is the LocalTunnel service/root, not necessarily the actual Spring Boot API route.
+
+The Spring Boot controller route supplied during the project was:
+
+```text
+POST /api/v1/suggestions/resolve
+```
+
+Therefore the actual production/development endpoint should ultimately be the full route:
+
+```text
+https://<active-localtunnel-domain>.loca.lt/api/v1/suggestions/resolve
+```
+
+The conversation initially used the root LocalTunnel URL and later reached an HTTP 405 because the request was being sent to the wrong route.
+
+---
+
+# 7. REST Message HTTP Method
+
+Open the REST Message:
+
+```text
+Spring Boot Deflection API
+```
+
+Scroll to:
+
+```text
+HTTP Methods
+```
+
+Create:
+
+```text
+Name:
+resolve
+
+HTTP Method:
+POST
+```
+
+The hierarchy must be:
+
+```text
+Spring Boot Deflection API
+    |
+    +-- resolve
+        POST
+```
+
+## 7.1 Critical Check
+
+The `resolve` method must actually appear in the **HTTP Methods** related list of the correct:
+
+```text
+Spring Boot Deflection API
+```
+
+REST Message.
+
+During development there were two REST Message records:
+
+```text
+AI_ServiceDesk_Suggest
+    Global
+
+Spring Boot Deflection API
+    AI Ticket Deflection scoped application
+```
+
+A `resolve` method had been created/mislinked under the wrong REST Message. That caused:
+
+```text
+Error constructing REST Message/Method
+```
+
+The fix was to ensure the `resolve` method exists under the correct parent REST Message.
+
+---
+
+# 8. REST Request Body
+
+The first working configuration used:
+
+```json
+{
+  "title": "${title}",
+  "description": "${description}",
+  "callerEmail": "${callerEmail}"
+}
+```
+
+The broader Spring Boot Swagger contract supplied during development contains:
+
+```json
+{
+  "title": "string",
+  "description": "string",
+  "callerEmail": "string",
+  "userDepartment": "string",
+  "category": "string",
+  "minConfidenceThreshold": 1073741824
+}
+```
+
+Therefore the full REST Message template can be configured as:
+
+```json
+{
+  "title": "${title}",
+  "description": "${description}",
+  "callerEmail": "${callerEmail}",
+  "userDepartment": "${userDepartment}",
+  "category": "${category}",
+  "minConfidenceThreshold": ${minConfidenceThreshold}
+}
+```
+
+The Script Include is responsible for populating these variables.
+
+---
+
+# 9. REST Method Configuration Checklist
+
+```text
+REST Message:
+Spring Boot Deflection API
+
+HTTP Method:
+resolve
+
+HTTP Method:
+POST
+
+Endpoint:
+<active-localtunnel-domain>/api/v1/suggestions/resolve
+
+Content-Type:
+application/json
+
+Request Body:
+{
+  "title": "${title}",
+  "description": "${description}",
+  "callerEmail": "${callerEmail}",
+  "userDepartment": "${userDepartment}",
+  "category": "${category}",
+  "minConfidenceThreshold": ${minConfidenceThreshold}
+}
+```
+
+---
+
+# 10. Script Include
+
+## 10.1 Create Script Include
+
+Inside the application:
+
+```text
+Create Application File
+    |
+    +-- Script Include
+```
+
+Configure:
+
+```text
+Name:
+AIDeflectionBroker
+```
+
+In the ServiceNow version used during the build, the option was not literally named `Client Callable`.
+
+Instead, the equivalent setting appeared as:
+
+```text
+Glide AJAX enabled:
+Yes
+```
+
+Set:
+
+```text
+Accessible from:
+All application scopes
+```
+
+During the security prompt, the development setup used:
+
+```text
+snc_internal
+```
+
+A later development step also selected `public` while troubleshooting role selection in the PDI.
+
+For a real production plugin, access should be defined according to the company's ServiceNow security model rather than copying the development role blindly.
+
+---
+
+# 11. Script Include Responsibility
+
+The Script Include is the server-side broker.
+
+```text
+Client Script
+     |
+     | GlideAjax
+     v
+AIDeflectionBroker
+     |
+     +-- Read sysparm_title
+     +-- Read sysparm_description
+     +-- Read current user's email
+     +-- Build request
+     +-- Call Spring Boot
+     +-- Read HTTP response
+     +-- Return JSON
+     |
+     v
+Client Script
+```
+
+The Script Include method name is:
+
+```text
+getResolution
+```
+
+---
+
+# 12. Initial RESTMessageV2 Script
+
+The initial scoped implementation used:
 
 ```javascript
-var AIServiceDeskClient = Class.create();
-AIServiceDeskClient.prototype = Object.extendsObject(AbstractAjaxProcessor, {
+var AIDeflectionBroker = Class.create();
+AIDeflectionBroker.prototype = Object.extendsObject(global.AbstractAjaxProcessor, {
 
-    getSuggestions: function() {
+    getResolution: function() {
+        var title = this.getParameter('sysparm_title');
         var description = this.getParameter('sysparm_description');
-
-        if (!description || description.trim().length === 0) {
-            return JSON.stringify({ suggestions: [], message: 'No description provided' });
-        }
+        var email = gs.getUser().getEmail() || "anonymous@company.com";
 
         try {
-            var restMessage = new sn_ws.RESTMessageV2();
-            restMessage.setEndpoint('https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve');
-            restMessage.setHttpMethod('POST');
-            restMessage.setRequestHeader('Content-Type', 'application/json');
-            restMessage.setHttpTimeout(10000);
+            var request = new sn_ws.RESTMessageV2(
+                'x_2185757_ai_tic_0.Spring Boot Deflection API',
+                'resolve'
+            );
 
-            var body = {
-                title: description.substring(0, 100),
-                description: description,
-                minConfidenceThreshold: 70
-            };
+            request.setStringParameterNoEscape('title', title);
+            request.setStringParameterNoEscape('description', description);
+            request.setStringParameterNoEscape('callerEmail', email);
 
-            restMessage.setRequestBody(JSON.stringify(body));
-            var response = restMessage.execute();
+            var response = request.execute();
+            var responseBody = response.getBody();
             var httpStatus = response.getStatusCode();
 
-            if (httpStatus === 200) {
-                return response.getBody();
+            if (httpStatus == 200) {
+                return responseBody;
             } else {
-                gs.error('[AI Service Desk] API returned status ' + httpStatus);
-                return JSON.stringify({ suggestions: [], error: 'API status ' + httpStatus });
+                return JSON.stringify({
+                    "error": "API returned status code: " + httpStatus
+                });
             }
-        } catch (e) {
-            gs.error('[AI Service Desk] getSuggestions failed: ' + e.getMessage());
-            return JSON.stringify({ suggestions: [], error: e.getMessage() });
+
+        } catch (ex) {
+            return JSON.stringify({
+                "error": "System Exception: " + ex.getMessage()
+            });
         }
     },
 
-    type: 'AIServiceDeskClient'
+    type: 'AIDeflectionBroker'
 });
 ```
 
-7. Click **Submit** button
+## Important
 
-### Important Notes for Step 2:
-- If you **don't see "Client callable"** checkbox, look for "Accessible from" field and set it to `All application scopes`
-- Make sure the Script field contains the EXACT code above
-- Do NOT add extra spaces or characters
+This code is included because it was the actual scoped REST Message implementation used during the troubleshooting.
+
+It later produced:
+
+```text
+Error constructing REST Message/Method
+```
+
+because the REST Message/method association and internal name resolution were not matching correctly.
 
 ---
 
-## Step 3: Create Client Script
+# 13. REST Message Name Troubleshooting
 
-The Client Script runs in the browser and calls the Script Include when the agent types.
+Several variants were tested during troubleshooting.
 
-1. In the **filter navigator**, type: `Client Scripts`
-2. Click **System Definition > Client Scripts**
-3. Click **New** button (top-right corner)
-4. Fill in these fields exactly:
-
-| Field | Value |
-|-------|-------|
-| **Name** | `AI - Auto Search Suggestions` |
-| **Table** | `Incident [incident]` |
-| **Type** | `onChange` |
-| **Field name** | `short_description` |
-| **Active** | Γÿæ Checked |
-| **UI Type** | `All` (or `Desktop` if All is not available) |
-| **Global** | Γÿæ Checked |
-
-5. In the **Script** field, paste this EXACT code (no modifications):
+### Variant 1
 
 ```javascript
-function onChange(control, oldValue, newValue, isLoading) {
-    if (isLoading) return;
+new sn_ws.RESTMessageV2(
+    'x_2185757_ai_tic_0.Spring Boot Deflection API',
+    'resolve'
+);
+```
 
-    try {
-        var container = document.getElementById('ai-suggestion-container');
-        if (container) {
-            container.innerHTML = '';
-            container.style.display = 'none';
-        }
+### Variant 2
 
-        if (!newValue || newValue.length < 10) {
-            return;
-        }
+```javascript
+new sn_ws.RESTMessageV2(
+    'x_2185757_ai_tic_0.spring_boot_deflection_api',
+    'resolve'
+);
+```
 
-        if (window._aiSearchTimeout) {
-            clearTimeout(window._aiSearchTimeout);
-        }
+### Variant 3
 
-        window._aiSearchTimeout = setTimeout(function() {
-            searchAISuggestions(newValue);
-        }, 1500);
-    } catch(e) {}
-}
+The actual REST Message system name was suggested to be copied from ServiceNow and then used:
 
-function searchAISuggestions(description) {
-    try {
-        var container = getOrCreateContainer();
-        container.innerHTML = '<div style="padding:16px;text-align:center;color:#666;"><b>Searching knowledge base...</b></div>';
-        container.style.display = 'block';
+```javascript
+var request = new sn_ws.RESTMessageV2(
+    'PASTE_THE_EXACT_REST_MESSAGE_NAME_HERE',
+    'resolve'
+);
+```
 
-        var ga = new GlideAjax('AIServiceDeskClient');
-        ga.addParam('sysparm_name', 'getSuggestions');
-        ga.addParam('sysparm_description', description);
-        ga.getXMLAnswer(function(response) {
-            try {
-                var result = JSON.parse(response);
-                displayAISuggestions(result);
-            } catch (e) {
-                container.style.display = 'none';
+The key lesson from the troubleshooting was:
+
+```text
+Do not guess the REST Message internal name.
+Verify the actual record and child HTTP method relationship in ServiceNow.
+```
+
+---
+
+# 14. REST Message Construction Error
+
+Observed error:
+
+```text
+Error constructing REST Message/Method:
+x_2185757_ai_tic_0.Spring Boot Deflection API/resolve
+```
+
+or:
+
+```text
+Error constructing REST Message/Method:
+x_2185757_ai_tic_0.spring_boot_deflection_api/resolve
+```
+
+Troubleshooting performed:
+
+1. Checked the `resolve` method name.
+2. Checked for trailing spaces.
+3. Checked the REST Message scope.
+4. Checked the REST Message internal/system name.
+5. Checked whether `resolve` was actually a child of the correct REST Message.
+6. Found conflicting/mislinked REST Message records.
+7. Removed the duplicate/mislinked method.
+8. Created/linked `resolve` under the correct scoped REST Message.
+9. Cleared ServiceNow cache.
+10. Hard-refreshed the Incident page.
+
+---
+
+# 15. Direct RESTMessageV2 Bypass Used During Troubleshooting
+
+Because the REST Message lookup continued to fail, the conversation temporarily bypassed the REST Message record entirely.
+
+The Script Include was changed to construct the request directly:
+
+```javascript
+var AIDeflectionBroker = Class.create();
+AIDeflectionBroker.prototype = Object.extendsObject(global.AbstractAjaxProcessor, {
+
+    getResolution: function() {
+        var title = this.getParameter('sysparm_title');
+        var description = this.getParameter('sysparm_description');
+        var email = gs.getUser().getEmail() || "anonymous@company.com";
+
+        try {
+            var request = new sn_ws.RESTMessageV2();
+
+            request.setEndpoint('https://loca.lt');
+            request.setHttpMethod('POST');
+
+            request.setRequestHeader(
+                'Content-Type',
+                'application/json'
+            );
+
+            request.setRequestHeader(
+                'Accept',
+                'application/json'
+            );
+
+            var payload = {
+                "title": String(title),
+                "description": String(description),
+                "callerEmail": String(email)
+            };
+
+            request.setRequestBody(JSON.stringify(payload));
+
+            var response = request.execute();
+            var responseBody = response.getBody();
+            var httpStatus = response.getStatusCode();
+
+            if (httpStatus == 200) {
+                return responseBody;
+            } else {
+                return JSON.stringify({
+                    "error": "API returned status code: " + httpStatus
+                });
             }
-        });
-    } catch(e) {}
+
+        } catch (ex) {
+            return JSON.stringify({
+                "error": "System Exception: " + ex.getMessage()
+            });
+        }
+    },
+
+    type: 'AIDeflectionBroker'
+});
+```
+
+This successfully moved the failure from:
+
+```text
+REST Message construction
+```
+
+to an actual HTTP response.
+
+The next observed status was:
+
+```text
+405 Method Not Allowed
+```
+
+That proved the ServiceNow Script Include was successfully making an outbound request.
+
+---
+
+# 16. HTTP 405 Resolution
+
+Observed:
+
+```text
+AI Deflection Engine Error:
+API returned status code: 405
+```
+
+Interpretation:
+
+```text
+ServiceNow
+   |
+   v
+Script Include
+   |
+   v
+Internet
+   |
+   v
+LocalTunnel
+```
+
+was working.
+
+The request was reaching a server, but the request was being sent to the wrong URL.
+
+The Spring Boot API route supplied by the project is:
+
+```text
+POST /api/v1/suggestions/resolve
+```
+
+Therefore the request must target:
+
+```text
+https://<active-localtunnel-domain>.loca.lt/api/v1/suggestions/resolve
+```
+
+not just:
+
+```text
+https://loca.lt
+```
+
+The conversation's direct inline script initially used:
+
+```javascript
+request.setEndpoint('https://loca.lt');
+```
+
+which produced the 405.
+
+---
+
+# 17. HTTP 500
+
+After the networking path was established, the observed error changed to:
+
+```text
+AI Deflection Engine Error:
+API returned status code: 500
+```
+
+This is an important milestone.
+
+It means:
+
+```text
+ServiceNow
+    |
+    v
+Script Include
+    |
+    v
+LocalTunnel
+    |
+    v
+Spring Boot
+```
+
+was being reached.
+
+At this point the problem was no longer the ServiceNow REST transport.
+
+The next area to inspect was the Spring Boot request processing:
+
+```text
+JSON parsing
+Request validation
+Null handling
+Backend business logic
+AI/knowledge-base processing
+```
+
+---
+
+# 18. Swagger Request Contract
+
+The Spring Boot API shown during development was:
+
+```text
+POST /api/v1/suggestions/resolve
+
+Generate AI resolution for ServiceNow pre-ticket query
+```
+
+Request:
+
+```json
+{
+  "title": "string",
+  "description": "string",
+  "callerEmail": "string",
+  "userDepartment": "string",
+  "category": "string",
+  "minConfidenceThreshold": 1073741824
 }
+```
 
-function displayAISuggestions(result) {
-    var container = getOrCreateContainer();
-    var suggestions = [];
+Response:
 
-    if (result.similarIncidents && result.similarIncidents.length > 0) {
-        suggestions = result.similarIncidents;
-    } else if (result.results && result.results.length > 0) {
-        suggestions = result.results;
-    } else if (result.suggestions && result.suggestions.length > 0) {
-        suggestions = result.suggestions;
-    }
+```json
+{
+  "suggestionId": "string",
+  "queryTitle": "string",
+  "recommendedTitle": "string",
+  "summaryResolution": "string",
+  "stepByStepInstructions": [
+    "string"
+  ],
+  "codeOrCommandSnippet": "string",
+  "confidenceScore": 1073741824,
+  "confidenceBand": "string",
+  "deflectionSuccessful": true,
+  "sourcesCount": 1073741824,
+  "generatedByModel": "string",
+  "createdAt": "2026-08-07T07:07:17.843Z",
+  "correlationId": "string"
+}
+```
 
-    if (suggestions.length === 0) {
-        container.innerHTML = '<div style="padding:16px;text-align:center;color:#888;">No similar incidents found. You may proceed with a new ticket.</div>';
-        container.style.display = 'block';
+---
+
+# 19. Expanded Payload Used During Troubleshooting
+
+When the backend contract required all fields, the payload was expanded to:
+
+```javascript
+var payload = {
+    "title": String(title),
+    "description": String(description) || "New Incident Description",
+    "callerEmail": String(email),
+    "userDepartment": "IT Support",
+    "category": "Inquiry",
+    "minConfidenceThreshold": 0
+};
+
+request.setRequestBody(JSON.stringify(payload));
+```
+
+This was used as a development test payload to ensure required fields were present and the numeric threshold was actually numeric.
+
+---
+
+# 20. Client Script
+
+## 20.1 Create Client Script
+
+Inside the scoped application:
+
+```text
+Create Application File
+    |
+    +-- Client Script
+```
+
+Configure:
+
+```text
+Name:
+AI Ticket Deflection Listener
+
+Table:
+Incident [incident]
+
+UI Type:
+All
+
+Type:
+onChange
+
+Field name:
+Short description
+```
+
+---
+
+# 21. Client Script Requirements
+
+The Client Script must:
+
+1. Run when Short description changes.
+2. Avoid calling the backend for every keystroke.
+3. Wait 600 ms after typing stops.
+4. Use GlideAjax.
+5. Call `AIDeflectionBroker`.
+6. Pass:
+   - title
+   - description
+7. Receive the JSON response asynchronously.
+8. Not block the ServiceNow Incident form.
+9. Display the result in a native modal.
+
+---
+
+# 22. Initial Client Script
+
+The first implementation used:
+
+```javascript
+function onChange(control, oldValue, newValue, isLoading, isTemplate) {
+    if (isLoading || newValue === '') {
         return;
     }
 
-    window._aiSuggestions = suggestions;
-
-    var html = '<div style="font-weight:600;margin-bottom:12px;color:#333;">' + suggestions.length + ' Similar Incident(s) Found</div>';
-
-    for (var i = 0; i < Math.min(suggestions.length, 3); i++) {
-        var s = suggestions[i];
-        var title = s.title || s.short_description || s.textContent || 'Untitled';
-        var resolution = s.resolution || s.resolutionNotes || '';
-        var score = s.relevanceScore ? Math.round(s.relevanceScore * 100) + '%' : '';
-        var number = s.incidentNumber || s.number || s.documentId || '';
-
-        html += '<div id="ai-card-' + i + '" style="background:white;border:1px solid #ddd;border-radius:6px;padding:12px;margin-bottom:8px;">';
-        html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px;">';
-        html += '<span style="color:#667eea;font-weight:600;font-size:12px;">' + number + '</span>';
-        html += '<span style="background:#28a745;color:white;padding:2px 8px;border-radius:10px;font-size:11px;">' + score + '</span>';
-        html += '</div>';
-        html += '<div style="font-weight:500;margin-bottom:6px;">' + title.substring(0, 80) + '</div>';
-
-        if (resolution) {
-            html += '<div style="font-size:13px;color:#555;margin-bottom:8px;"><b>Resolution:</b> ' + resolution.substring(0, 200) + '</div>';
-        }
-
-        html += '<div style="display:flex;gap:8px;">';
-        html += '<button style="background:#28a745;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;" onclick="applyAIResolution(' + i + ')">Apply Resolution</button>';
-        html += '<button style="background:none;border:1px solid #ddd;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px;" onclick="dismissAICard(' + i + ')">Dismiss</button>';
-        html += '</div></div>';
+    if (window.aiDeflectionTimer) {
+        clearTimeout(window.aiDeflectionTimer);
     }
 
-    html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #ddd;">';
-    html += '<button style="width:100%;background:#667eea;color:white;border:none;padding:10px;border-radius:6px;cursor:pointer;font-size:13px;" onclick="g_form.submit()">Submit New Ticket Anyway</button>';
-    html += '</div>';
+    window.aiDeflectionTimer = setTimeout(function() {
 
-    container.innerHTML = html;
-    container.style.display = 'block';
+        var ga = new GlideAjax(
+            'x_2185757_ai_tic_0.AIDeflectionBroker'
+        );
+
+        ga.addParam('sysparm_name', 'getResolution');
+        ga.addParam('sysparm_title', newValue);
+        ga.addParam(
+            'sysparm_description',
+            g_form.getValue('description') || ''
+        );
+
+        ga.getXMLAnswer(function(response) {
+            if (!response) {
+                return;
+            }
+
+            try {
+                var data = JSON.parse(response);
+
+                if (data.error) {
+                    console.error(
+                        "AI Deflection Error: ",
+                        data.error
+                    );
+                    return;
+                }
+
+                console.log(
+                    "AI Recommendations Received: ",
+                    data
+                );
+
+            } catch (e) {
+                console.error(
+                    "Failed to parse JSON response from backend: ",
+                    e
+                );
+            }
+        });
+
+    }, 600);
+}
+```
+
+---
+
+# 23. Scoped Timer Problem
+
+The initial script used:
+
+```javascript
+window.aiDeflectionTimer
+```
+
+The ServiceNow scoped runtime produced:
+
+```text
+Cannot read properties of null
+(reading 'aiDeflectionTimer')
+```
+
+The conversation identified that the scoped environment restricted access to the global `window` object.
+
+The timer was therefore moved to the field control itself.
+
+---
+
+# 24. Corrected Debounce Pattern
+
+Use:
+
+```javascript
+if (control.aiDeflectionTimer) {
+    clearTimeout(control.aiDeflectionTimer);
 }
 
-function applyAIResolution(index) {
-    var s = window._aiSuggestions[index];
-    if (!s) return;
-    var resolution = s.resolution || s.resolutionNotes || s.textContent || '';
-    var current = g_form.getValue('resolution_notes') || '';
-    var newResolution = current ? current + '\n\n--- AI Suggested ---\n' + resolution : resolution;
-    g_form.setValue('resolution_notes', newResolution);
-    g_form.setValue('state', '6');
-    g_form.setValue('close_code', 'Closed/Resolved by Caller');
-    g_form.addInfoMessage('AI resolution applied from ' + (s.incidentNumber || s.number || 'suggestion'));
-}
+control.aiDeflectionTimer = setTimeout(function() {
 
-function dismissAICard(index) {
-    var card = document.getElementById('ai-card-' + index);
-    if (card) card.style.display = 'none';
-}
+    // API call
 
-function getOrCreateContainer() {
-    var container = document.getElementById('ai-suggestion-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'ai-suggestion-container';
-        container.style.cssText = 'margin:10px 0;padding:12px;background:#f0f4ff;border:1px solid #667eea;border-radius:8px;font-family:sans-serif;';
+}, 600);
+```
 
-        var form = document.querySelector('.form_body') || document.querySelector('.section_div') || document.body;
-        if (form) {
-            form.insertBefore(container, form.firstChild);
-        }
+This was the important ServiceNow scoped-runtime fix.
+
+---
+
+# 25. Final Client Script Direction
+
+The later version combined:
+
+```text
+control.aiDeflectionTimer
++
+GlideAjax
++
+getResolution
++
+JSON parsing
++
+GlideModal
++
+setPreference
+```
+
+The complete version used in the conversation was:
+
+```javascript
+function onChange(control, oldValue, newValue, isLoading, isTemplate) {
+    if (isLoading || newValue === '') {
+        return;
     }
-    return container;
+
+    if (control.aiDeflectionTimer) {
+        clearTimeout(control.aiDeflectionTimer);
+    }
+
+    control.aiDeflectionTimer = setTimeout(function() {
+
+        var ga = new GlideAjax(
+            'x_2185757_ai_tic_0.AIDeflectionBroker'
+        );
+
+        ga.addParam(
+            'sysparm_name',
+            'getResolution'
+        );
+
+        ga.addParam(
+            'sysparm_title',
+            newValue
+        );
+
+        ga.addParam(
+            'sysparm_description',
+            g_form.getValue('description') || ''
+        );
+
+        ga.getXMLAnswer(function(response) {
+            if (!response) {
+                return;
+            }
+
+            try {
+                var data = JSON.parse(response);
+
+                if (data.error) {
+                    console.error(
+                        "AI Deflection Engine Error: ",
+                        data.error
+                    );
+                    return;
+                }
+
+                console.log(
+                    "AI Recommendations Payload Received: ",
+                    data
+                );
+
+                var formattedSteps = "";
+
+                if (
+                    data.stepByStepInstructions &&
+                    data.stepByStepInstructions.length > 0
+                ) {
+                    data.stepByStepInstructions.forEach(
+                        function(step, index) {
+                            formattedSteps +=
+                                (index + 1) +
+                                ". " +
+                                step +
+                                "\n";
+                        }
+                    );
+                } else {
+                    formattedSteps =
+                        "No structured manual steps provided.";
+                }
+
+                var gm = new GlideModal(
+                    'x_2185757_ai_tic_0_ai_resolution_popup',
+                    false,
+                    '500px'
+                );
+
+                gm.setTitle(
+                    'AI Automated Resolution Assistant'
+                );
+
+                gm.setPreference(
+                    'sysparm_summary',
+                    String(
+                        data.summaryResolution || ''
+                    )
+                );
+
+                gm.setPreference(
+                    'sysparm_steps',
+                    String(formattedSteps)
+                );
+
+                gm.setPreference(
+                    'sysparm_code',
+                    String(
+                        data.codeOrCommandSnippet || ''
+                    )
+                );
+
+                gm.render();
+
+            } catch (e) {
+                console.error(
+                    "Failed to map popup preferences safely: ",
+                    e
+                );
+            }
+        });
+
+    }, 600);
 }
 ```
 
-6. Click **Submit** button
+> This is the final **Client Script direction reached in the conversation** before the UI Page rendering issue was investigated.
 
 ---
 
-## Step 4: Test the Integration
+# 26. Client Script Security Settings
 
-1. **Reload** the Incident form:
-   - Go to **Incidents** in the left menu
-   - Click **Create New** (or open any existing incident)
+The scoped Client Script was configured with:
 
-2. In the **Short description** field, type:
-   ```
-   VPN not working
-   ```
+```text
+Isolate script:
+Unchecked
 
-3. Wait **2 seconds**
-
-4. **Expected results:**
-   - A **blue panel** appears with "Searching knowledge base..."
-   - Then it shows "Similar Incident(s) Found" with cards
-   - OR "No similar incidents found. You may proceed with a new ticket."
-
-5. If suggestions appear:
-   - Click **Apply Resolution** to apply the suggested fix
-   - OR click **Dismiss** to close a suggestion card
-
----
-
-## Step 5: Verify in System Logs
-
-If something doesn't work, check the logs:
-
-1. In the filter navigator, type: `System Logs`
-2. Click **System Logs > All**
-3. In the search bar, type: `[AI Service Desk]`
-4. Press Enter
-5. Look for any error messages
-
----
-
-## Troubleshooting
-
-### Problem: No blue panel appears
-
-**Check 1: Browser Console**
-1. Press F12 to open DevTools
-2. Click **Console** tab
-3. Type in Short description field
-4. Look for **red error messages**
-5. Tell me what you see
-
-**Check 2: Script Include Settings**
-1. Go to **System Definition > Script Includes**
-2. Open `AIServiceDeskClient`
-3. Verify:
-   - **Active** = Γÿæ
-   - **Client callable** = Γÿæ (or "Accessible from" = "All application scopes")
-   - **Script** = exactly matches the code in Step 2
-
-**Check 3: Client Script Settings**
-1. Go to **System Definition > Client Scripts**
-2. Open `AI - Auto Search Suggestions`
-3. Verify:
-   - **Active** = Γÿæ
-   - **Type** = onChange
-   - **Field name** = short_description
-   - **Table** = Incident [incident]
-
-### Problem: "Client callable" checkbox not visible
-
-In some ServiceNow versions, this checkbox may be hidden. Instead:
-1. Look for **"Accessible from"** field
-2. Set it to **"All application scopes"**
-3. This has the same effect
-
-### Problem: Panel appears but says "No similar incidents found"
-
-This means the connection works but no matching incidents were found. This is normal if you haven't loaded synthetic data yet.
-
-### Problem: Error in System Logs
-
-Common errors and fixes:
-
-| Error | Fix |
-|-------|-----|
-| `API returned status 403` | Backend rejected the request - check tunnel URL |
-| `API returned status 500` | Backend error - check backend logs |
-| `GlideAjax failed` | Script Include not client-callable |
-| `JSON parse error` | Backend returned invalid response |
-
----
-
-## File Locations
-
-All plugin files are saved locally at:
-```
-D:\POC\ai-service-desk-knowledge-intelligence-platform\service-desk-ai-platform-backend\servicenow-plugin\
+Global:
+Unchecked
 ```
 
-| File | Purpose |
-|------|---------|
-| `01-script-include.js` | Server-side Script Include code |
-| `02-client-script.js` | Browser-side Client Script code |
-| `03-rest-message.json` | REST Message configuration (optional) |
-| `README.md` | Quick reference guide |
+These settings were important during troubleshooting.
+
+The conversation specifically encountered:
+
+```text
+Access to jQuery, prototype and the window object are likewise disabled
+```
+
+which reinforced that scoped script isolation/security settings were affecting the implementation.
 
 ---
 
-## Architecture Flow
+# 27. Disable Old Global Scripts
 
+The old prototype records should not remain active alongside the scoped application.
+
+Otherwise both implementations can execute simultaneously.
+
+Disable the old Global:
+
+```text
+Client Script
 ```
-Agent types in Short description
-        |
-        v
-Client Script (onChange) fires
-        |
-        v
-GlideAjax calls AIServiceDeskClient.getSuggestions()
-        |
-        v
-Script Include calls AI backend via REST
-        |
-        v
-POST https://sciences-tap-museum-insulation.trycloudflare.com/api/v1/suggestions/resolve
-        |
-        v
-AI backend searches Pinecone vector database
-        |
-        v
-Returns similar incidents with relevance scores
-        |
-        v
-Client Script renders blue suggestion panel
-        |
-        v
-Agent clicks "Apply Resolution" to auto-fill
+
+and:
+
+```text
+Script Include
+```
+
+Steps:
+
+1. Open the old Global Client Script.
+2. Uncheck:
+
+```text
+Active
+```
+
+3. Save/update.
+4. Open the old Global Script Include.
+5. Uncheck:
+
+```text
+Active
+```
+
+6. Save/update.
+
+This prevents:
+
+```text
+Duplicate API calls
+Duplicate timers
+Conflicting responses
+Conflicting UI rendering
 ```
 
 ---
 
-## Quick Reference Card
+# 28. UI Page
 
-| Item | Value |
-|------|-------|
-| ServiceNow Instance | `https://dev440425.service-now.com` |
-| Backend Tunnel | `https://sciences-tap-museum-insulation.trycloudflare.com` |
-| Script Include Name | `AIServiceDeskClient` |
-| Client Script Name | `AI - Auto Search Suggestions` |
-| Trigger Field | `short_description` |
-| Min Characters | 10 |
-| Delay Before Search | 1.5 seconds |
-| API Endpoint | `/api/v1/suggestions/resolve` |
+## 28.1 Create UI Page
 
----
+Inside the scoped application:
 
-## When Cloudflare Tunnel Restarts
+```text
+Create Application File
+    |
+    +-- UI Page
+```
 
-Cloudflare tunnels generate a **new URL** on each restart. When this happens:
+Configure:
 
-1. Note the new URL from the terminal
-2. Update the Script Include:
-   - Go to **System Definition > Script Includes**
-   - Open `AIServiceDeskClient`
-   - Find the old URL in the Script field
-   - Replace with the new URL
-   - Click **Update**
-3. Test again
+```text
+Name:
+ai_resolution_popup
+```
+
+The fully qualified page name used during the development instance was:
+
+```text
+x_2185757_ai_tic_0_ai_resolution_popup
+```
 
 ---
 
-## Need Help?
+# 29. Initial UI Page Layout
 
-If you're stuck, check:
-1. Is the backend running? (`http://localhost:8080/actuator/health`)
-2. Is the tunnel running? (check terminal)
-3. Is the Script Include client-callable?
-4. Are there errors in the Console tab (F12)?
-5. Are there errors in System Logs?
+The first UI Page template used:
 
-Report any issues with:
-- Screenshot of the Console tab
-- Screenshot of System Logs
-- The exact error message
+```xml
+<?xml version="1.0" encoding="utf-8" ?>
+<jelly trim="false"
+       xmlns:j="jelly:core"
+       xmlns:g="glide"
+       xmlns:j2="null"
+       xmlns:g2="null">
+
+    <style>
+        .ai-popup-container {
+            padding: 15px;
+            font-family: Arial, sans-serif;
+        }
+
+        .ai-summary {
+            font-size: 14px;
+            font-weight: bold;
+            color: #293e40;
+            margin-bottom: 12px;
+            background: #eef7f8;
+            padding: 10px;
+            border-left: 4px solid #1f778a;
+            border-radius: 4px;
+        }
+
+        .ai-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 10px;
+            margin-bottom: 5px;
+            color: #4b5563;
+        }
+
+        .ai-step-item {
+            margin-bottom: 6px;
+            line-height: 1.4;
+            font-size: 12px;
+            list-style-position: inside;
+        }
+
+        .ai-code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+
+    <div class="ai-popup-container">
+        <div class="ai-summary" id="popup_summary">
+            Processing...
+        </div>
+
+        <div class="ai-title">
+            Recommended Steps:
+        </div>
+
+        <ol id="popup_steps_list"
+            style="padding-left: 15px;">
+        </ol>
+
+        <div id="code_snippet_section"
+             style="display:none;">
+
+            <div class="ai-title">
+                Terminal Command / Snippet:
+            </div>
+
+            <div class="ai-code-block"
+                 id="popup_code">
+            </div>
+
+        </div>
+    </div>
+
+</jelly>
+```
+
+---
+
+# 30. First Modal Rendering Approach
+
+The first approach tried to render the modal and then access its DOM:
+
+```javascript
+var gm = new GlideModal(
+    'x_2185757_ai_tic_0_ai_resolution_popup',
+    false,
+    '500px'
+);
+
+gm.setTitle(
+    'AI Automated Resolution Assistant'
+);
+
+gm.render();
+
+setTimeout(function() {
+
+    var doc = gm.getTemplateDOM();
+
+    if (!doc) {
+        return;
+    }
+
+    doc.querySelector(
+        '#popup_summary'
+    ).innerText =
+        data.summaryResolution ||
+        'No automated summary available.';
+
+}, 150);
+```
+
+This approach was later abandoned because the ServiceNow version used in the development instance did not reliably support the required DOM access path.
+
+---
+
+# 31. `getTemplateDOM()` Problem
+
+The conversation encountered unreliable behaviour around:
+
+```javascript
+gm.getTemplateDOM()
+```
+
+The implementation therefore moved away from directly manipulating the modal DOM.
+
+---
+
+# 32. `document.getElementById()` Problem
+
+A later attempt used:
+
+```javascript
+document.getElementById(...)
+```
+
+The browser then produced:
+
+```text
+Cannot read properties of null
+(reading 'getElementById')
+```
+
+because the script was executing in a scoped/isolated frame context and could not reliably access the UI Page's DOM from the parent Client Script.
+
+---
+
+# 33. `getWindowReference()` Problem
+
+Another attempted solution used:
+
+```javascript
+gm.getWindowReference()
+```
+
+but the ServiceNow runtime reported:
+
+```text
+gm.getWindowReference is not a function
+```
+
+Therefore that API was not available in the ServiceNow version used.
+
+---
+
+# 34. Final UI Data Passing Direction
+
+The conversation ultimately moved toward:
+
+```text
+Client Script
+    |
+    | setPreference()
+    v
+GlideModal
+    |
+    v
+UI Page
+    |
+    v
+Jelly / page-local rendering
+```
+
+instead of:
+
+```text
+Client Script
+    |
+    | direct DOM manipulation
+    v
+UI Page
+```
+
+This is an important architectural distinction.
+
+---
+
+# 35. Client Script `setPreference()` Mapping
+
+The final data mapping used:
+
+```javascript
+gm.setPreference(
+    'sysparm_summary',
+    String(data.summaryResolution || '')
+);
+
+gm.setPreference(
+    'sysparm_steps',
+    String(formattedSteps)
+);
+
+gm.setPreference(
+    'sysparm_code',
+    String(data.codeOrCommandSnippet || '')
+);
+```
+
+The response is converted into:
+
+```text
+sysparm_summary
+sysparm_steps
+sysparm_code
+```
+
+before rendering the modal.
+
+---
+
+# 36. Jelly Preference Rendering Attempt
+
+The first preference-based UI Page attempted:
+
+```xml
+<?xml version="1.0" encoding="utf-8" ?>
+<jelly trim="false"
+       xmlns:j="jelly:core"
+       xmlns:g="glide"
+       xmlns:j2="null"
+       xmlns:g2="null">
+
+    <style>
+        .ai-popup-container {
+            padding: 15px;
+            font-family: Arial, sans-serif;
+        }
+
+        .ai-summary {
+            font-size: 14px;
+            font-weight: bold;
+            color: #293e40;
+            margin-bottom: 12px;
+            background: #eef7f8;
+            padding: 10px;
+            border-left: 4px solid #1f778a;
+            border-radius: 4px;
+        }
+
+        .ai-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 10px;
+            margin-bottom: 5px;
+            color: #4b5563;
+        }
+
+        .ai-text-block {
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-line;
+            padding-left: 5px;
+            color: #333333;
+        }
+
+        .ai-code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+
+    <div class="ai-popup-container">
+
+        <div class="ai-summary">
+            <j:out value="${RP.getWindowProperties().get('sysparm_summary')}" />
+        </div>
+
+        <div class="ai-title">
+            Recommended Steps:
+        </div>
+
+        <div class="ai-text-block">
+            <j:out value="${RP.getWindowProperties().get('sysparm_steps')}" />
+        </div>
+
+        <j:set
+            var="jvar_code_val"
+            value="${RP.getWindowProperties().get('sysparm_code')}"
+        />
+
+        <j:if test="${jvar_code_val != null &amp;&amp; jvar_code_val != ''}">
+
+            <div class="ai-title">
+                Terminal Command / Snippet:
+            </div>
+
+            <div class="ai-code-block">
+                <j:out value="${jvar_code_val}" />
+            </div>
+
+        </j:if>
+
+    </div>
+
+</jelly>
+```
+
+The conversation reported that the modal rendered but the values were not displayed.
+
+---
+
+# 37. Data Anchor Approach
+
+The next approach used a hidden HTML data element:
+
+```xml
+<div id="ai_data_anchor"
+     style="display:none;"
+     data-summary="${sysparm_summary}"
+     data-steps="${sysparm_steps}"
+     data-code="${sysparm_code}">
+</div>
+```
+
+Then the UI Page attempted to read:
+
+```javascript
+var anchor =
+    document.getElementById('ai_data_anchor');
+
+if (anchor) {
+
+    var summaryText =
+        anchor.getAttribute('data-summary');
+
+    var stepsText =
+        anchor.getAttribute('data-steps');
+
+    var codeText =
+        anchor.getAttribute('data-code');
+
+}
+```
+
+The purpose was to avoid cross-frame DOM access and allow the UI Page to render its own values.
+
+---
+
+# 38. UI Page Data Anchor Template
+
+The detailed template used during the conversation was:
+
+```xml
+<?xml version="1.0" encoding="utf-8" ?>
+<jelly trim="false"
+       xmlns:j="jelly:core"
+       xmlns:g="glide"
+       xmlns:j2="null"
+       xmlns:g2="null">
+
+    <style>
+        .ai-popup-container {
+            padding: 15px;
+            font-family: Arial, sans-serif;
+        }
+
+        .ai-summary {
+            font-size: 14px;
+            font-weight: bold;
+            color: #293e40;
+            margin-bottom: 12px;
+            background: #eef7f8;
+            padding: 10px;
+            border-left: 4px solid #1f778a;
+            border-radius: 4px;
+        }
+
+        .ai-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 10px;
+            margin-bottom: 5px;
+            color: #4b5563;
+        }
+
+        .ai-text-block {
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-line;
+            padding-left: 5px;
+            color: #333333;
+        }
+
+        .ai-code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+
+    <div id="ai_data_anchor"
+         style="display:none;"
+         data-summary="${sysparm_summary}"
+         data-steps="${sysparm_steps}"
+         data-code="${sysparm_code}">
+    </div>
+
+    <div class="ai-popup-container">
+
+        <div class="ai-summary"
+             id="modal_summary">
+            Processing...
+        </div>
+
+        <div class="ai-title">
+            Recommended Steps:
+        </div>
+
+        <div class="ai-text-block"
+             id="modal_steps">
+            Processing steps...
+        </div>
+
+        <div id="modal_code_section"
+             style="display:none;">
+
+            <div class="ai-title">
+                Terminal Command / Snippet:
+            </div>
+
+            <div class="ai-code-block"
+                 id="modal_code">
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        (function() {
+
+            var anchor =
+                document.getElementById('ai_data_anchor');
+
+            if (!anchor) {
+                return;
+            }
+
+            var summaryText =
+                anchor.getAttribute('data-summary');
+
+            var stepsText =
+                anchor.getAttribute('data-steps');
+
+            var codeText =
+                anchor.getAttribute('data-code');
+
+            var summaryEl =
+                document.getElementById('modal_summary');
+
+            if (summaryEl) {
+                summaryEl.innerText =
+                    summaryText ||
+                    'No resolution summary provided.';
+            }
+
+            var stepsEl =
+                document.getElementById('modal_steps');
+
+            if (stepsEl) {
+                stepsEl.innerText =
+                    stepsText ||
+                    'No structured steps available.';
+            }
+
+            if (codeText) {
+
+                if (codeText.trim() !== "") {
+
+                    var codeSection =
+                        document.getElementById(
+                            'modal_code_section'
+                        );
+
+                    var codeBlock =
+                        document.getElementById(
+                            'modal_code'
+                        );
+
+                    if (codeSection && codeBlock) {
+
+                        codeBlock.innerText =
+                            codeText;
+
+                        codeSection.style.display =
+                            'block';
+                    }
+                }
+            }
+
+        })();
+    </script>
+
+</jelly>
+```
+
+---
+
+# 39. UI Page Script Parsing Issue
+
+The data-anchor version produced a ServiceNow script parsing problem:
+
+```text
+Uncaught SyntaxError:
+Unexpected token ';'
+```
+
+The conversation identified the XML/JavaScript entity expression as a likely issue around:
+
+```text
+&amp;&amp;
+```
+
+inside the `<script>` block.
+
+The final attempted cleanup simplified the JavaScript conditional logic to avoid complex XML entity parsing.
+
+---
+
+# 40. Final UI Page Attempt
+
+The final attempted UI Page template in the conversation was:
+
+```xml
+<?xml version="1.0" encoding="utf-8" ?>
+<jelly trim="false"
+       xmlns:j="jelly:core"
+       xmlns:g="glide"
+       xmlns:j2="null"
+       xmlns:g2="null">
+
+    <style>
+        .ai-popup-container {
+            padding: 15px;
+            font-family: Arial, sans-serif;
+        }
+
+        .ai-summary {
+            font-size: 14px;
+            font-weight: bold;
+            color: #293e40;
+            margin-bottom: 12px;
+            background: #eef7f8;
+            padding: 10px;
+            border-left: 4px solid #1f778a;
+            border-radius: 4px;
+        }
+
+        .ai-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 10px;
+            margin-bottom: 5px;
+            color: #4b5563;
+        }
+
+        .ai-text-block {
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-line;
+            padding-left: 5px;
+            color: #333333;
+        }
+
+        .ai-code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+
+    <div id="ai_data_anchor"
+         style="display:none;"
+         data-summary="${sysparm_summary}"
+         data-steps="${sysparm_steps}"
+         data-code="${sysparm_code}">
+    </div>
+
+    <div class="ai-popup-container">
+
+        <div class="ai-summary"
+             id="modal_summary">
+            Processing...
+        </div>
+
+        <div class="ai-title">
+            Recommended Steps:
+        </div>
+
+        <div class="ai-text-block"
+             id="modal_steps">
+            Processing steps...
+        </div>
+
+        <div id="modal_code_section"
+             style="display:none;">
+
+            <div class="ai-title">
+                Terminal Command / Snippet:
+            </div>
+
+            <div class="ai-code-block"
+                 id="modal_code">
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        (function() {
+
+            var anchor =
+                document.getElementById('ai_data_anchor');
+
+            if (!anchor) {
+                return;
+            }
+
+            var summaryText =
+                anchor.getAttribute('data-summary');
+
+            var stepsText =
+                anchor.getAttribute('data-steps');
+
+            var codeText =
+                anchor.getAttribute('data-code');
+
+            var summaryEl =
+                document.getElementById('modal_summary');
+
+            if (summaryEl) {
+                summaryEl.innerText =
+                    summaryText ||
+                    'No resolution summary provided.';
+            }
+
+            var stepsEl =
+                document.getElementById('modal_steps');
+
+            if (stepsEl) {
+                stepsEl.innerText =
+                    stepsText ||
+                    'No structured steps available.';
+            }
+
+            if (codeText) {
+
+                if (codeText.trim() !== "") {
+
+                    var codeSection =
+                        document.getElementById(
+                            'modal_code_section'
+                        );
+
+                    var codeBlock =
+                        document.getElementById(
+                            'modal_code'
+                        );
+
+                    if (codeSection && codeBlock) {
+
+                        codeBlock.innerText =
+                            codeText;
+
+                        codeSection.style.display =
+                            'block';
+                    }
+                }
+            }
+
+        })();
+    </script>
+
+</jelly>
+```
+
+> **Status:** This was the final UI Page attempt captured in the conversation. The conversation did not provide a confirmed final successful modal-data rendering after this point, so this must not be documented as "verified production-working".
+
+---
+
+# 41. Important UI Requirement
+
+The intended user experience is:
+
+```text
++----------------------------------------------------------+
+| AI Automated Resolution Assistant                    X   |
++----------------------------------------------------------+
+|                                                          |
+| Resolution Summary                                      |
+| -------------------------------------------------------  |
+| Resolved via configuration refresh and DNS clearing.    |
+|                                                          |
+| Recommended Steps                                       |
+| 1. Refresh GlobalProtect configuration                  |
+| 2. Run gpconfig /refresh                                 |
+| 3. Flush DNS                                             |
+| 4. Retry VPN connection                                  |
+| 5. Create ticket only if the issue remains               |
+|                                                          |
+| Terminal Command / Snippet                              |
+| -------------------------------------------------------  |
+| gpconfig /refresh && ipconfig /flushdns                 |
+|                                                          |
++----------------------------------------------------------+
+```
+
+The modal should:
+
+```text
+[ ] Be draggable
+[ ] Not block the Incident form
+[ ] Be opened natively through ServiceNow
+[ ] Show summary
+[ ] Show ordered troubleshooting steps
+[ ] Show optional command/code
+[ ] Allow the user to continue editing the Incident
+```
+
+---
+
+# 42. LocalTunnel Development Setup
+
+The Spring Boot application was running locally.
+
+ServiceNow cannot directly call:
+
+```text
+http://localhost:8080
+```
+
+Therefore LocalTunnel was used.
+
+Start the backend first.
+
+Then:
+
+```bash
+npx localtunnel --port 8080
+```
+
+or, if a fixed subdomain is available:
+
+```bash
+npx localtunnel --port 8080 --subdomain my-servicenow-app-plugin
+```
+
+The development URL looks like:
+
+```text
+https://my-servicenow-app-plugin.loca.lt
+```
+
+The actual API route should then be:
+
+```text
+https://my-servicenow-app-plugin.loca.lt/api/v1/suggestions/resolve
+```
+
+---
+
+# 43. LocalTunnel Friendly Reminder
+
+During development, LocalTunnel can sometimes show a temporary browser confirmation/friendly-reminder page.
+
+If ServiceNow receives:
+
+```text
+302
+```
+
+or unexpected HTML instead of JSON:
+
+1. Open the active LocalTunnel URL directly in a browser.
+2. If a confirmation page appears, complete the confirmation.
+3. Keep the LocalTunnel terminal running.
+4. Retry the Incident test.
+
+---
+
+# 44. ServiceNow Cache Clearing
+
+After changing Script Includes or UI Pages:
+
+```text
+cache.do
+```
+
+was repeatedly used during troubleshooting.
+
+Steps:
+
+1. Open the ServiceNow main instance.
+2. In the Filter Navigator enter:
+
+```text
+cache.do
+```
+
+3. Press Enter.
+4. Wait for the cache flush.
+5. Return to the Incident form.
+6. Perform:
+
+```text
+Ctrl + F5
+```
+
+or:
+
+```text
+Ctrl + Shift + R
+```
+
+---
+
+# 45. Browser Hard Refresh
+
+Windows:
+
+```text
+Ctrl + F5
+```
+
+or:
+
+```text
+Ctrl + Shift + R
+```
+
+Chrome developer-tools method:
+
+1. Press F12.
+2. Right-click the browser reload icon.
+3. Select:
+
+```text
+Empty cache and hard reload
+```
+
+4. Close DevTools.
+5. Retry the Incident.
+
+---
+
+# 46. End-to-End Test
+
+## 46.1 Preconditions
+
+Before testing:
+
+```text
+[ ] Spring Boot application running
+[ ] POST /api/v1/suggestions/resolve available
+[ ] LocalTunnel running
+[ ] ServiceNow REST configuration saved
+[ ] AIDeflectionBroker saved
+[ ] Client Script active
+[ ] UI Page saved
+[ ] Old Global scripts disabled
+[ ] ServiceNow cache flushed
+[ ] Browser hard-refreshed
+```
+
+---
+
+# 47. Test Scenario
+
+Open:
+
+```text
+incident.do
+```
+
+Create a new Incident.
+
+In:
+
+```text
+Short description
+```
+
+type:
+
+```text
+VPN not working
+```
+
+Stop typing.
+
+Expected sequence:
+
+```text
+User types
+     |
+     v
+600 ms wait
+     |
+     v
+GlideAjax
+     |
+     v
+AIDeflectionBroker
+     |
+     v
+Spring Boot
+     |
+     v
+Knowledge Base / AI
+     |
+     v
+JSON response
+     |
+     v
+GlideModal
+```
+
+---
+
+# 48. Expected Backend Request
+
+Expected request:
+
+```http
+POST /api/v1/suggestions/resolve
+Content-Type: application/json
+Accept: application/json
+```
+
+Example body:
+
+```json
+{
+  "title": "VPN not working",
+  "description": "",
+  "callerEmail": "user@company.com",
+  "userDepartment": "IT Support",
+  "category": "Inquiry",
+  "minConfidenceThreshold": 0
+}
+```
+
+---
+
+# 49. Expected Response
+
+Example:
+
+```json
+{
+  "suggestionId": "sug-a07f0085",
+  "queryTitle": "VPN not working",
+  "recommendedTitle": "GlobalProtect VPN Certificate & Tunnel Reset Procedure",
+  "summaryResolution": "Resolved via GlobalProtect configuration refresh and DNS cache clearing. No incident ticket needed.",
+  "stepByStepInstructions": [
+    "Refresh GlobalProtect configuration.",
+    "Run gpconfig /refresh.",
+    "Flush the DNS cache.",
+    "Retry the VPN connection.",
+    "Create a ticket only if the issue remains."
+  ],
+  "codeOrCommandSnippet": "gpconfig /refresh && ipconfig /flushdns",
+  "confidenceScore": 0.95,
+  "confidenceBand": "HIGH",
+  "deflectionSuccessful": true,
+  "sourcesCount": 5,
+  "generatedByModel": "model",
+  "createdAt": "2026-08-07T07:07:17.843Z",
+  "correlationId": "..."
+}
+```
+
+---
+
+# 50. Troubleshooting Matrix
+
+## Error: Cannot read properties of null — `aiDeflectionTimer`
+
+```text
+Cause:
+window.aiDeflectionTimer in scoped Client Script.
+
+Fix:
+Store timer on control.
+
+Use:
+control.aiDeflectionTimer
+```
+
+---
+
+## Error: Error constructing REST Message/Method
+
+```text
+Cause:
+Incorrect REST Message name,
+incorrect scope,
+incorrect internal name,
+trailing spaces,
+or resolve method linked to another REST Message.
+
+Fix:
+Verify:
+
+Spring Boot Deflection API
+    |
+    +-- resolve
+
+Then verify exact internal configuration.
+```
+
+---
+
+## Error: resolve method already exists
+
+```text
+Cause:
+A resolve method already exists.
+
+Fix:
+Do not create another one blindly.
+
+Open the existing resolve record.
+Verify it belongs to:
+Spring Boot Deflection API
+
+Update it instead.
+```
+
+---
+
+## Error: 405
+
+```text
+Meaning:
+Request reached the server but the route/method was wrong.
+
+Check:
+POST /api/v1/suggestions/resolve
+
+Do not use:
+https://loca.lt
+as the final API route.
+```
+
+---
+
+## Error: 500
+
+```text
+Meaning:
+Request reached Spring Boot.
+
+Check:
+- JSON body
+- missing fields
+- null values
+- Jackson parsing
+- backend validation
+- AI processing
+- database/knowledge-base processing
+```
+
+---
+
+## Error: GlideModal is not defined
+
+Check:
+
+```text
+Isolate script = unchecked
+```
+
+Also verify the script is executing in the intended UI/runtime.
+
+---
+
+## Error: getTemplateDOM is unavailable/unreliable
+
+Do not rely on:
+
+```javascript
+gm.getTemplateDOM()
+```
+
+The ServiceNow version used during development did not provide reliable access for this use case.
+
+Move rendering responsibility into the UI Page.
+
+---
+
+## Error: getWindowReference is not a function
+
+The development instance did not expose:
+
+```javascript
+gm.getWindowReference()
+```
+
+Do not use that API in this implementation.
+
+---
+
+## Error: document.getElementById returns null
+
+Cause:
+
+The Client Script and UI Page can execute in different frame/scope contexts.
+
+Avoid trying to reach the UI Page DOM directly from the Incident Client Script.
+
+Prefer passing data into the modal and allowing the UI Page to render it.
+
+---
+
+## Error: UI Page shows but values are blank
+
+Check:
+
+```text
+setPreference()
+```
+
+names:
+
+```text
+sysparm_summary
+sysparm_steps
+sysparm_code
+```
+
+and ensure the UI Page reads the same values.
+
+Also flush:
+
+```text
+cache.do
+```
+
+and hard-refresh the browser.
+
+---
+
+## Error: Unexpected token ';' in UI Page
+
+The conversation encountered a Jelly/JavaScript parsing issue around XML entity escaping inside the `<script>` block.
+
+Avoid unnecessarily complex XML entity expressions inside the UI Page script and keep the embedded JavaScript simple.
+
+---
+
+# 51. What Was Actually Verified During Development
+
+The conversation established these milestones:
+
+## Verified
+
+```text
+Scoped application created
+        |
+        v
+REST Message configured
+        |
+        v
+Script Include callable
+        |
+        v
+Client Script firing
+        |
+        v
+GlideAjax working
+        |
+        v
+REST Message construction issue identified
+        |
+        v
+Direct RESTMessageV2 bypass used
+        |
+        v
+HTTP 405 reached external endpoint
+        |
+        v
+HTTP 500 reached Spring Boot
+        |
+        v
+Backend payload contract investigated
+```
+
+The conversation also captured a successful backend payload log:
+
+```text
+AI Recommendations Payload Received:
+{
+    suggestionId: "...",
+    queryTitle: "VPN not working",
+    recommendedTitle: "...",
+    summaryResolution: "...",
+    stepByStepInstructions: Array(5),
+    ...
+}
+```
+
+That demonstrates that the ServiceNow client side eventually received a structured response from the backend.
+
+## Not conclusively verified
+
+The final UI Page rendering of:
+
+```text
+summary
+steps
+code
+```
+
+inside the modal was still being debugged in the captured conversation.
+
+Therefore do not tell another developer that the final modal rendering was already fully verified.
+
+---
+
+# 52. Final File Inventory
+
+The ServiceNow scoped application consists of:
+
+```text
+AI Ticket Deflection
+│
+├── Spring Boot Deflection API
+│   └── resolve
+│
+├── AIDeflectionBroker
+│
+├── AI Ticket Deflection Listener
+│
+└── ai_resolution_popup
+```
+
+---
+
+# 53. Final Responsibility of Each File
+
+## `Spring Boot Deflection API`
+
+Responsible for:
+
+```text
+External API configuration
+Endpoint
+HTTP method
+Request body
+```
+
+---
+
+## `resolve`
+
+Responsible for:
+
+```text
+POST request
+JSON payload
+Spring Boot API route
+```
+
+---
+
+## `AIDeflectionBroker`
+
+Responsible for:
+
+```text
+GlideAjax server endpoint
+Reading ServiceNow parameters
+Calling Spring Boot
+Returning JSON
+```
+
+---
+
+## `AI Ticket Deflection Listener`
+
+Responsible for:
+
+```text
+Listening to Short description
+600ms debounce
+GlideAjax
+Response handling
+Launching GlideModal
+Passing modal preferences
+```
+
+---
+
+## `ai_resolution_popup`
+
+Responsible for:
+
+```text
+Modal presentation
+Summary
+Steps
+Command/code
+Styling
+```
+
+---
+
+# 54. Important Architectural Principle
+
+The intended architecture is **not**:
+
+```text
+Browser
+   |
+   +---- directly ----> Spring Boot
+```
+
+It is:
+
+```text
+Browser
+   |
+   v
+ServiceNow Client Script
+   |
+   | GlideAjax
+   v
+ServiceNow Script Include
+   |
+   | Server-side HTTP
+   v
+Spring Boot
+```
+
+This keeps the external API call on the ServiceNow server side.
+
+---
+
+# 55. Production Plugin Direction
+
+The development implementation uses:
+
+```text
+Scoped Application
+Client Script
+Script Include
+REST Message
+UI Page
+```
+
+That architecture remains appropriate for the pre-ticket deflection feature.
+
+For a production/installable plugin, the following should additionally be considered:
+
+```text
+[ ] Production HTTPS backend
+[ ] No LocalTunnel
+[ ] Configurable backend URL
+[ ] Secure authentication
+[ ] OAuth2 / mTLS as appropriate
+[ ] No hardcoded secrets
+[ ] Configurable timeout
+[ ] Request correlation ID
+[ ] Logging
+[ ] Error handling
+[ ] Rate limiting/debounce
+[ ] Plugin enable/disable configuration
+[ ] Versioning
+[ ] Scoped application packaging
+[ ] Update Set / Application Repository / Store distribution
+```
+
+---
+
+# 56. Development-to-Production Connectivity
+
+Development:
+
+```text
+ServiceNow
+    |
+    v
+LocalTunnel
+    |
+    v
+localhost:8080
+    |
+    v
+Spring Boot
+```
+
+Production:
+
+```text
+ServiceNow
+    |
+    v
+HTTPS
+    |
+    v
+Enterprise-hosted Spring Boot
+    |
+    v
+Knowledge Base / AI
+```
+
+The LocalTunnel URL must not become a production dependency.
+
+---
+
+# 57. Complete Setup Checklist
+
+```text
+===========================================================
+AI TICKET DEFLECTION — SERVICENOW SETUP CHECKLIST
+===========================================================
+
+APPLICATION
+-----------------------------------------------------------
+[ ] ServiceNow Studio opened
+[ ] Scoped application created
+[ ] Name = AI Ticket Deflection
+[ ] Description configured
+[ ] Scope recorded
+
+REST MESSAGE
+-----------------------------------------------------------
+[ ] REST Message created
+[ ] Name = Spring Boot Deflection API
+[ ] Endpoint configured
+[ ] Accessible from reviewed
+[ ] Correct scoped application selected
+
+HTTP METHOD
+-----------------------------------------------------------
+[ ] resolve method exists
+[ ] resolve belongs to Spring Boot Deflection API
+[ ] HTTP Method = POST
+[ ] No trailing whitespace in method name
+[ ] Endpoint is correct
+[ ] /api/v1/suggestions/resolve included
+[ ] Content-Type = application/json
+[ ] Request body matches Spring Boot contract
+
+SCRIPT INCLUDE
+-----------------------------------------------------------
+[ ] AIDeflectionBroker created
+[ ] Glide AJAX enabled
+[ ] Accessible from = All application scopes
+[ ] Security role reviewed
+[ ] getResolution method exists
+[ ] sysparm_title handled
+[ ] sysparm_description handled
+[ ] caller email handled
+[ ] REST request handled
+[ ] HTTP status handled
+[ ] JSON response returned
+
+CLIENT SCRIPT
+-----------------------------------------------------------
+[ ] AI Ticket Deflection Listener created
+[ ] Table = Incident [incident]
+[ ] Type = onChange
+[ ] Field = Short description
+[ ] UI Type = All
+[ ] 600ms debounce
+[ ] control.aiDeflectionTimer
+[ ] GlideAjax configured
+[ ] getResolution configured
+[ ] title passed
+[ ] description passed
+[ ] JSON parsed
+[ ] error handling added
+[ ] GlideModal launched
+
+SECURITY
+-----------------------------------------------------------
+[ ] Isolate script reviewed
+[ ] Global unchecked for scoped implementation
+[ ] Script Include role reviewed
+[ ] Old Global Client Script disabled
+[ ] Old Global Script Include disabled
+
+UI PAGE
+-----------------------------------------------------------
+[ ] ai_resolution_popup created
+[ ] Summary area exists
+[ ] Steps area exists
+[ ] Command/code area exists
+[ ] Modal title configured
+[ ] setPreference names match
+[ ] UI Page reads matching preference values
+[ ] Jelly syntax validated
+[ ] No unsupported GlideModal DOM API used
+
+CONNECTIVITY
+-----------------------------------------------------------
+[ ] Spring Boot running
+[ ] LocalTunnel running
+[ ] Full API route configured
+[ ] ServiceNow reaches LocalTunnel
+[ ] LocalTunnel reaches Spring Boot
+
+CACHE
+-----------------------------------------------------------
+[ ] cache.do executed after major changes
+[ ] Browser hard refresh performed
+
+TEST
+-----------------------------------------------------------
+[ ] New Incident opened
+[ ] Short description entered
+[ ] 600ms debounce observed
+[ ] GlideAjax request fired
+[ ] Script Include executed
+[ ] Spring Boot received request
+[ ] Spring Boot returned JSON
+[ ] Client parsed JSON
+[ ] Modal opened
+[ ] Summary displayed
+[ ] Steps displayed
+[ ] Command/code displayed when present
+[ ] Incident form remained usable
+===========================================================
+```
+
+---
+
+# 58. One-Page Runtime Summary
+
+```text
+USER
+ |
+ | Types "VPN not working"
+ v
+INCIDENT SHORT DESCRIPTION
+ |
+ | onChange
+ v
+CLIENT SCRIPT
+ |
+ | 600ms debounce
+ v
+GLIDE AJAX
+ |
+ v
+AIDeflectionBroker
+ |
+ | POST JSON
+ v
+SPRING BOOT
+ |
+ | /api/v1/suggestions/resolve
+ v
+AI / KNOWLEDGE BASE
+ |
+ v
+STRUCTURED RESOLUTION JSON
+ |
+ v
+GLIDE AJAX CALLBACK
+ |
+ v
+GLIDEMODAL
+ |
+ v
+AI RESOLUTION POPUP
+ |
+ +-- Summary
+ +-- Recommended Steps
+ +-- Command / Code
+```
+
+---
+
+# 59. Final Notes for the Next Developer
+
+1. Do not recreate the old Global implementation.
+2. Work inside the **AI Ticket Deflection** scoped application.
+3. Do not guess the REST Message internal name.
+4. Make sure `resolve` is physically under the correct `Spring Boot Deflection API` REST Message.
+5. Do not leave duplicate Global scripts active.
+6. Do not use `window.aiDeflectionTimer`; use `control.aiDeflectionTimer`.
+7. Keep the API call asynchronous from the Incident UI through GlideAjax.
+8. Do not block the Incident form while the backend request is running.
+9. Keep LocalTunnel only for development.
+10. The real backend route is:
+
+```text
+POST /api/v1/suggestions/resolve
+```
+
+11. The backend response contains:
+
+```text
+summaryResolution
+stepByStepInstructions
+codeOrCommandSnippet
+```
+
+12. The modal should consume those values rather than directly manipulating the Incident form DOM.
+13. Flush `cache.do` after major ServiceNow script/UI changes.
+14. Hard-refresh the Incident page after cache changes.
+15. The ServiceNow-to-Spring-Boot network path was successfully demonstrated during troubleshooting; the remaining UI work in the captured conversation was the final reliable rendering of the returned values inside the modal.
+
+---
+
+# 60. Component-to-Responsibility Table
+
+| Component | Name | Responsibility |
+|---|---|---|
+| Scoped Application | `AI Ticket Deflection` | Package/namespace the plugin |
+| REST Message | `Spring Boot Deflection API` | Backend integration configuration |
+| HTTP Method | `resolve` | POST request definition |
+| Script Include | `AIDeflectionBroker` | Server-side broker |
+| GlideAjax Method | `getResolution` | Client-to-server entry point |
+| Client Script | `AI Ticket Deflection Listener` | Listen/debounce/query |
+| UI Page | `ai_resolution_popup` | Render modal content |
+| GlideModal | Native ServiceNow modal | Draggable/non-blocking presentation |
+| LocalTunnel | Development tunnel | Expose localhost Spring Boot |
+
+---
+
+# 61. Status
+
+```text
+ServiceNow Scoped App:
+    CREATED
+
+REST Message:
+    CONFIGURED
+
+REST Method:
+    resolve / POST
+
+Script Include:
+    AIDeflectionBroker
+
+Glide AJAX:
+    ENABLED
+
+Client Script:
+    AI Ticket Deflection Listener
+
+Debounce:
+    600 ms
+
+Backend Connectivity:
+    VERIFIED DURING DEVELOPMENT
+
+Spring Boot Response:
+    RECEIVED DURING DEVELOPMENT
+
+UI Modal:
+    CREATED
+
+Modal Data Rendering:
+    STILL REQUIRED FINAL VERIFICATION IN THE CAPTURED SESSION
+```
+
+This status section is intentionally conservative and reflects the actual development record rather than claiming that an unverified final UI state was completed.
