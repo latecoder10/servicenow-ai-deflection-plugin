@@ -1,0 +1,16 @@
+{
+  "name": "demo-narration",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Generates an ElevenLabs voiceover for the ServiceNow POC demo video and muxes it onto the silent capture.",
+  "scripts": {
+    "voice": "node generate.js",
+    "mux": "node mux.js",
+    "build": "node generate.js && node mux.js"
+  },
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.1.0",
+    "dotenv": "^17.0.0"
+  }
+}
