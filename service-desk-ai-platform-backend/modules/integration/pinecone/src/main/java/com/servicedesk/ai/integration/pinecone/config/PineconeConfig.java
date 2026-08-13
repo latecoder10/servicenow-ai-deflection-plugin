@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "ai.pinecone")
 public class PineconeConfig {
-    private String apiKey = "pcsk_6rhLgt_9dRvGj8nmxBgiRGybF22SGtZmak3U99snhmEXJy3tp6GAdjWVHZhGwmtpbkq9V";
+    private String apiKey = "";
     private String host = "";
     private String indexName = "servicedesk-knowledge";
     private int dimension = 1024;
