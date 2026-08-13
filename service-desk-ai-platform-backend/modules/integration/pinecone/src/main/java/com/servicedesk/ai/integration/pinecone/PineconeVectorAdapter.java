@@ -1,6 +1,8 @@
 package com.servicedesk.ai.integration.pinecone;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.servicedesk.ai.common.model.CorrelationContext;
 import com.servicedesk.ai.domain.AppConstants;
 import com.servicedesk.ai.domain.model.DocumentMetadata;
 import com.servicedesk.ai.domain.model.KnowledgeChunk;
@@ -217,11 +219,12 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
 
     @Override
     public List<KnowledgeChunk> similaritySearch(String collectionName, List<Float> queryVector, int topK, String departmentFilter, String categoryFilter) {
+        String cid = CorrelationContext.getCorrelationId();
         String namespace = indexResolver.resolveCurrentNamespace();
         String host = pineconeConfig.getHost();
 
         if (host == null || host.isBlank()) {
-            log.warn("Pinecone host not configured, returning empty results");
+            log.warn("[Pinecone][{}] Host not configured, returning empty results", cid);
             return List.of();
         }
 
@@ -240,14 +243,17 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
             String url = "https://" + host + AppConstants.PINECONE_QUERY_PATH;
             HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
 
+            long start = System.currentTimeMillis();
             ResponseEntity<String> response = rest.exchange(url, HttpMethod.POST, request, String.class);
+            long apiTime = System.currentTimeMillis() - start;
+
             var root = objectMapper.readTree(response.getBody());
             var matches = root.path("matches");
 
             List<KnowledgeChunk> results = new ArrayList<>();
             for (var match : matches) {
                 var meta = match.path("metadata");
-                DocumentMetadata docMeta = DocumentMetadata.builder()
+                com.servicedesk.ai.domain.model.DocumentMetadata docMeta = com.servicedesk.ai.domain.model.DocumentMetadata.builder()
                     .documentId(meta.path("documentId").asText(""))
                     .title(meta.has("title") ? meta.path("title").asText(null) : null)
                     .department(meta.has("department") ? meta.path("department").asText(null) : null)
@@ -264,9 +270,11 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
                     .build();
                 results.add(chunk);
             }
+            log.info("[Pinecone][{}] Query API responded in {}ms: {} results from namespace='{}'",
+                cid, apiTime, results.size(), namespace);
             return results;
         } catch (Exception e) {
-            log.error("Pinecone search failed: {}", e.getMessage(), e);
+            log.error("[Pinecone][{}] Search failed: {}", cid, e.getMessage(), e);
             return List.of();
         }
     }
@@ -325,6 +333,33 @@ public class PineconeVectorAdapter implements VectorDatabasePort {
 
     @Override
     public long countVectors(String collectionName) {
-        return 0L;
+        String host = pineconeConfig.getHost();
+        if (host == null || host.isBlank()) {
+            return 0L;
+        }
+
+        try {
+            String namespace = indexResolver.resolveCurrentNamespace();
+            RestTemplate rest = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(AppConstants.PINECONE_API_KEY_HEADER, pineconeConfig.getApiKey());
+
+            String url = "https://" + host + "/describe_index_stats";
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+
+            ResponseEntity<String> response = rest.exchange(url, HttpMethod.GET, request, String.class);
+            JsonNode root = objectMapper.readTree(response.getBody());
+
+            JsonNode namespaces = root.path("namespaces");
+            if (namespaces.has(namespace)) {
+                return namespaces.path(namespace).path("vectorCount").asLong(0L);
+            }
+
+            JsonNode totalVectorCount = root.path("totalVectorCount");
+            return totalVectorCount.asLong(0L);
+        } catch (Exception e) {
+            log.warn("Pinecone countVectors failed: {}", e.getMessage());
+            return 0L;
+        }
     }
 }
