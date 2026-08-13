@@ -2,6 +2,7 @@ package com.servicedesk.ai.integration.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.servicedesk.ai.common.model.CorrelationContext;
 import com.servicedesk.ai.domain.AppConstants;
 import com.servicedesk.ai.domain.port.out.EmbeddingPort;
 import com.servicedesk.ai.integration.llm.config.EmbeddingConfig;
@@ -29,9 +30,9 @@ public class SpringAiEmbeddingAdapter implements EmbeddingPort {
 
     @Override
     public List<Float> generateEmbedding(String textContent) {
-        if (apiKey == null || apiKey.isBlank() || apiKey.equals("demo-key")) {
-            log.warn("No Gemini API key configured, using placeholder vector");
-            return generatePlaceholder(textContent);
+        String cid = CorrelationContext.getCorrelationId();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("Gemini API key (ai.llm.api-key or GEMINI_API_KEY) is not configured.");
         }
         try {
             RestTemplate rest = new RestTemplate();
@@ -48,14 +49,16 @@ public class SpringAiEmbeddingAdapter implements EmbeddingPort {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
+            long start = System.currentTimeMillis();
             ResponseEntity<String> response = rest.exchange(url, HttpMethod.POST, request, String.class);
+            long apiTime = System.currentTimeMillis() - start;
+
             JsonNode root = objectMapper.readTree(response.getBody());
             JsonNode values = root.path("embedding").path("values");
 
             List<Float> vector = new ArrayList<>();
             values.forEach(v -> vector.add(v.floatValue()));
-            
-            // Pad or truncate to match Pinecone dimension
+
             int targetDim = embeddingConfig.getDimension();
             while (vector.size() < targetDim) {
                 vector.add(0.0f);
@@ -63,21 +66,23 @@ public class SpringAiEmbeddingAdapter implements EmbeddingPort {
             if (vector.size() > targetDim) {
                 vector.subList(targetDim, vector.size()).clear();
             }
-            
-            log.info("Generated {}-dim Gemini embedding for text length {}", vector.size(), textContent.length());
+
+            log.info("[Embedding][{}] Gemini API responded in {}ms: {}-dim vector for text ({} chars)",
+                cid, apiTime, vector.size(), textContent.length());
             return vector;
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
-            log.warn("Gemini embedding failed ({}), using placeholder", e.getMessage());
-            return generatePlaceholder(textContent);
+            throw new RuntimeException("Gemini embedding API call failed: " + e.getMessage(), e);
         }
     }
 
     @Override
     public List<List<Float>> generateBatchEmbeddings(List<String> textBatch) {
         if (textBatch.isEmpty()) return List.of();
-        if (apiKey == null || apiKey.isBlank() || apiKey.equals("demo-key")) {
-            log.warn("No Gemini API key configured, using placeholder vectors for batch");
-            return textBatch.stream().map(this::generatePlaceholder).toList();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("Gemini API key (ai.llm.api-key or GEMINI_API_KEY) is not configured. "
+                + "Set the environment variable or application property to enable real embeddings.");
         }
 
         int batchSize = AppConstants.EMBEDDING_BATCH_SIZE;
@@ -93,6 +98,7 @@ public class SpringAiEmbeddingAdapter implements EmbeddingPort {
     }
 
     private List<List<Float>> batchEmbed(List<String> texts) {
+        String cid = CorrelationContext.getCorrelationId();
         try {
             String modelToUse = AppConstants.EMBEDDING_MODEL;
             String url = "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -112,7 +118,10 @@ public class SpringAiEmbeddingAdapter implements EmbeddingPort {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
+            long start = System.currentTimeMillis();
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+            long apiTime = System.currentTimeMillis() - start;
+
             JsonNode root = objectMapper.readTree(response.getBody());
             JsonNode embeddings = root.path("embeddings");
 
@@ -121,25 +130,16 @@ public class SpringAiEmbeddingAdapter implements EmbeddingPort {
             for (JsonNode emb : embeddings) {
                 List<Float> vector = new ArrayList<>();
                 emb.path("values").forEach(v -> vector.add(v.floatValue()));
-                // Pad or truncate to target dimension
                 while (vector.size() < targetDim) vector.add(0.0f);
                 if (vector.size() > targetDim) vector.subList(targetDim, vector.size()).clear();
                 results.add(vector);
             }
+            log.info("[Embedding][{}] Gemini batchEmbed API responded in {}ms: {} vectors for {} texts", cid, apiTime, results.size(), texts.size());
             return results;
         } catch (Exception e) {
-            log.warn("Gemini batch embedding failed ({}), falling back to individual calls", e.getMessage());
+            log.warn("[Embedding][{}] Gemini batch embedding failed ({}), falling back to individual calls", cid, e.getMessage());
             return texts.stream().map(this::generateEmbedding).toList();
         }
-    }
-
-    private List<Float> generatePlaceholder(String textContent) {
-        List<Float> vector = new ArrayList<>(embeddingConfig.getDimension());
-        float baseHash = Math.abs(textContent.hashCode()) % 1000 / 1000.0f;
-        for (int i = 0; i < embeddingConfig.getDimension(); i++) {
-            vector.add((float) Math.sin(baseHash + i));
-        }
-        return vector;
     }
 
     private String truncate(String text, int maxLen) {

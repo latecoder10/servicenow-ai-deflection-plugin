@@ -68,6 +68,13 @@ ai:
     provider: GEMINI
     model-name: gemini-3.6-flash
     api-key: ${GEMINI_API_KEY:}
+    # Thinking tokens are drawn from max-output-tokens. At 1024 with thinking
+    # enabled the model exhausted the budget after SUMMARY and never wrote STEPS.
+    max-output-tokens: ${AI_LLM_MAX_OUTPUT_TOKENS:2048}
+    # "low" or "high"; blank omits thinkingConfig. gemini-3.6-flash rejects the
+    # older thinkingBudget field with 400 INVALID_ARGUMENT.
+    thinking-level: ${AI_LLM_THINKING_LEVEL:low}
+    temperature: ${AI_LLM_TEMPERATURE:0.3}
   embedding:
     provider: GEMINI
     model-name: gemini-embedding-001
@@ -135,3 +142,18 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+
+# ──────────────────────── LOGGING ────────────────────────
+logging:
+  level:
+    root: INFO
+    com.servicedesk.ai: INFO
+    com.servicedesk.ai.integration.llm: DEBUG
+    com.servicedesk.ai.integration.pinecone: DEBUG
+    com.servicedesk.ai.integration.servicenow: DEBUG
+    com.servicedesk.ai.application.service: DEBUG
+    com.servicedesk.ai.infrastructure: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/service-desk-ai-platform.log
