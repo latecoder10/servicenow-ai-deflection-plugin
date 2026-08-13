@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  AI Deflection Sidebar - UI Macro : ai_deflection_sidebar
+  Rendered on the Incident form by the "AI Deflection Sidebar" UI Formatter.
+  Setup is documented in SETUP-FROM-SCRATCH.md.
+
+  WHY THIS FILE LOOKS THE WAY IT DOES - PLEASE READ BEFORE EDITING.
+
+  ServiceNow parses a UI macro as XML, ignores CDATA, and then re-parses the
+  decoded result. That means neither raw characters nor XML entities survive:
+  a raw ampersand fails the first pass, and an escaped one decodes and then
+  fails the second pass as an undeclared entity. Either way the ENTIRE Incident
+  form dies and shows a bare parser error instead of the record.
+
+  So the script below contains no ampersand and no left angle bracket at all:
+    - markup is built with createElement / appendChild, never innerHTML strings
+    - untrusted text is assigned with textContent, so no manual escaping is needed
+    - comparisons are written so the larger value is on the left
+    - logical AND is written as nested if statements
+
+  Keep it that way. If you need a separator character, use a plain hyphen.
+-->
+<j:jelly trim="false" xmlns:j="jelly:core" xmlns:g="glide" xmlns:j2="null" xmlns:g2="null">
+
+    <style>
+        .aidfl-side{position:fixed;top:0;right:0;bottom:0;width:360px;background:#fff;
+            border-left:1px solid #C9CDD2;display:none;flex-direction:column;z-index:900;
+            font-family:inherit;box-shadow:-2px 0 8px rgba(20,24,28,.08);}
+        .aidfl-side.on{display:flex;}
+
+        .aidfl-head{padding:12px 15px;border-bottom:1px solid #E3E6E9;background:#FBFCFC;
+            display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;}
+        .aidfl-h{font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#1F7A8C;}
+        .aidfl-badge{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:10px;
+            border:1px solid transparent;white-space:nowrap;}
+        .aidfl-badge.hi{background:#EAF6EE;color:#2C6C47;border-color:#CFE6D4;}
+        .aidfl-badge.mid{background:#FDF5E6;color:#8A6116;border-color:#F0E0BE;}
+        .aidfl-badge.lo{background:#F3F4F6;color:#6B7280;border-color:#E1E4E8;}
+
+        .aidfl-body{padding:13px 15px 16px;overflow-y:auto;flex:1;}
+        .aidfl-idle{font-size:12px;color:#9AA0A6;line-height:1.6;padding-top:4px;}
+        .aidfl-err{font-size:11.5px;color:#8A3A3A;background:#FCF3F3;border:1px solid #F0D9D9;
+            border-left:3px solid #B45454;border-radius:4px;padding:10px 12px;line-height:1.5;}
+
+        .aidfl-load{display:flex;align-items:center;gap:9px;font-size:12px;color:#6B7280;padding-top:4px;}
+        .aidfl-spin{width:13px;height:13px;border:2px solid #DDE1E5;border-top-color:#1F7A8C;
+            border-radius:50%;animation:aidflspin .7s linear infinite;flex-shrink:0;}
+        @keyframes aidflspin{to{transform:rotate(360deg);}}
+
+        .aidfl-ttl{font-size:13px;font-weight:600;color:#22282D;line-height:1.35;margin-bottom:9px;}
+        .aidfl-sum{font-size:12px;color:#2F3439;line-height:1.55;background:#F4FAFB;
+            border-left:3px solid #1F7A8C;border-radius:3px;padding:10px 12px;margin-bottom:13px;}
+
+        .aidfl-lbl{font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+            color:#8A9096;margin:14px 0 6px;}
+        .aidfl-steps{margin:0;padding-left:18px;}
+        .aidfl-steps li{font-size:12px;color:#3D444B;line-height:1.5;margin-bottom:6px;}
+
+        .aidfl-codewrap{position:relative;}
+        .aidfl-code{background:#1E1E1E;color:#D4D4D4;font-family:Consolas,Monaco,monospace;
+            font-size:11.5px;line-height:1.5;padding:10px 12px;border-radius:4px;
+            white-space:pre-wrap;word-break:break-word;overflow-x:auto;margin:0;}
+        .aidfl-copy{position:absolute;top:6px;right:6px;font-size:10px;padding:3px 8px;border-radius:3px;
+            background:rgba(255,255,255,.12);color:#D4D4D4;border:1px solid rgba(255,255,255,.2);
+            cursor:pointer;font-family:inherit;}
+        .aidfl-copy:hover{background:rgba(255,255,255,.22);}
+
+        .aidfl-meta{font-size:10.5px;color:#9AA0A6;margin-top:14px;padding-top:9px;
+            border-top:1px dotted #E3E6E9;line-height:1.6;}
+
+        .aidfl-foot{border-top:1px solid #E3E6E9;padding:11px 15px;background:#FBFCFC;
+            flex-shrink:0;display:none;}
+        .aidfl-foot.on{display:block;}
+        .aidfl-solve{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;
+            font-size:11.5px;font-weight:600;padding:8px 11px;border-radius:3px;cursor:pointer;
+            font-family:inherit;background:#fff;color:#1F7A8C;border:1px solid #1F7A8C;
+            transition:background .15s ease,color .15s ease;margin-bottom:7px;}
+        .aidfl-solve:hover{background:#1F7A8C;color:#fff;}
+        .aidfl-dismiss{width:100%;font-size:11.5px;padding:7px 11px;border-radius:3px;cursor:pointer;
+            font-family:inherit;background:#fff;border:1px solid #CDD2D6;color:#5A6169;}
+        .aidfl-dismiss:hover{background:#F2F4F6;color:#1F2D3D;border-color:#98A3AE;}
+
+        .aidfl-done{border:1px solid #CFE6D4;border-left:3px solid #3F8F5F;background:#F5FAF6;
+            border-radius:4px;padding:12px 14px;font-size:12.5px;color:#2C6C47;font-weight:600;
+            line-height:1.5;}
+    </style>
+
+    <script>
+    (function () {
+        if (window.__AIDFL_LOADED__) { return; }
+        window.__AIDFL_LOADED__ = true;
+
+        // ---- tunables -------------------------------------------------------
+        var SCOPE            = 'x_2185757_ai_tic_0';
+        var ONLY_NEW_RECORD  = true;   // false = also run on saved incidents
+        var MIN_CHARS        = 15;     // combined short plus description length
+        var DEBOUNCE_MS      = 700;
+        var SIDEBAR_W        = 360;
+        var MIN_WINDOW_W     = 1000;   // narrower than this: no room for a sidebar
+        var PUSH_FORM        = true;   // pad the form so the sidebar never overlaps
+
+        var shortEl, descEl, side, bodyEl, badgeEl, footEl;
+        var timer = null, lastKey = '', inflight = false, currentText = '', current = null;
+        var tries = 0;
+
+        boot();
+
+        function boot() {
+            shortEl = document.getElementById('incident.short_description');
+            descEl  = document.getElementById('incident.description');
+
+            if (!shortEl || typeof g_form === 'undefined') {
+                tries = tries + 1;
+                if (tries > 40) { return; }
+                setTimeout(boot, 250);
+                return;
+            }
+            if (ONLY_NEW_RECORD) {
+                if (!g_form.isNewRecord()) { return; }
+            }
+            if (MIN_WINDOW_W > window.innerWidth) { return; }
+
+            build();
+            attach(shortEl);
+            attach(descEl);
+            open();
+            showIdle();
+        }
+
+        // ---- DOM helpers ----------------------------------------------------
+        // No innerHTML anywhere: markup strings would need angle brackets, which
+        // the macro parser destroys. textContent also removes the need to escape.
+        function el(tag, cls, text) {
+            var node = document.createElement(tag);
+            if (cls) { node.className = cls; }
+            if (text !== null) {
+                if (text !== undefined) { node.textContent = String(text); }
+            }
+            return node;
+        }
+
+        function btn(cls, text) {
+            var b = el('button', cls, text);
+            b.type = 'button';
+            return b;
+        }
+
+        function clear(node) {
+            while (node.firstChild) { node.removeChild(node.firstChild); }
+        }
+
+        function build() {
+            side = document.createElement('aside');
+            side.id = 'aidfl-side';
+            side.className = 'aidfl-side';
+            side.style.width = SIDEBAR_W + 'px';
+
+            var head = el('div', 'aidfl-head');
+            head.appendChild(el('span', 'aidfl-h', 'Before you submit'));
+            badgeEl = el('span', 'aidfl-badge lo');
+            badgeEl.style.display = 'none';
+            head.appendChild(badgeEl);
+
+            bodyEl = el('div', 'aidfl-body');
+
+            footEl = el('div', 'aidfl-foot');
+            var solveBtn = btn('aidfl-solve', 'This solved it');
+            var dismissBtn = btn('aidfl-dismiss', 'Still need help - continue');
+            footEl.appendChild(solveBtn);
+            footEl.appendChild(dismissBtn);
+
+            side.appendChild(head);
+            side.appendChild(bodyEl);
+            side.appendChild(footEl);
+            document.body.appendChild(side);
+
+            solveBtn.addEventListener('click', onSolved);
+            dismissBtn.addEventListener('click', onContinue);
+        }
+
+        function attach(elm) {
+            if (!elm) { return; }
+            elm.addEventListener('keyup', schedule);
+            elm.addEventListener('change', schedule);
+        }
+
+        function schedule() {
+            if (timer) { clearTimeout(timer); }
+            timer = setTimeout(evaluate, DEBOUNCE_MS);
+        }
+
+        function evaluate() {
+            var s = shortEl.value || '';
+            var d = descEl ? (descEl.value || '') : '';
+            var combined = (s + ' ' + d).replace(/\s+/g, ' ').trim();
+
+            if (MIN_CHARS > combined.length) { showIdle(); return; }
+            if (combined === lastKey) { return; }
+            if (inflight) { return; }
+
+            lastKey = combined;
+            currentText = combined;
+            fetchSuggestion(s, d);
+        }
+
+        function fetchSuggestion(s, d) {
+            inflight = true;
+            showLoading();
+
+            var ga = new GlideAjax(SCOPE + '.AIDeflectionBroker');
+            ga.addParam('sysparm_name', 'getResolution');
+            ga.addParam('sysparm_title', s);
+            ga.addParam('sysparm_description', d);
+            ga.addParam('sysparm_category', g_form.getValue('category') || 'Software');
+
+            ga.getXMLAnswer(function (answer) {
+                inflight = false;
+                if (!answer) { showError('No response from the AI service.'); return; }
+
+                var data = null;
+                try {
+                    data = JSON.parse(answer);
+                } catch (e) {
+                    showError('Malformed response from the AI service.');
+                    return;
+                }
+
+                if (data.error) {
+                    showError(data.message || data.error);
+                    return;
+                }
+                render(data);
+            });
+        }
+
+        // ---- rendering ------------------------------------------------------
+        function render(d) {
+            current = d;
+
+            var score = parseInt(d.confidenceScore, 10) || 0;
+            var band  = d.confidenceBand || bandOf(score);
+            badgeEl.style.display = '';
+            badgeEl.className = 'aidfl-badge ' + toneOf(score);
+            badgeEl.textContent = score + '% ' + band;
+
+            clear(bodyEl);
+
+            if (d.recommendedTitle) {
+                bodyEl.appendChild(el('div', 'aidfl-ttl', d.recommendedTitle));
+            }
+            if (d.summaryResolution) {
+                bodyEl.appendChild(el('div', 'aidfl-sum', d.summaryResolution));
+            }
+
+            var steps = d.stepByStepInstructions || [];
+            if (steps.length) {
+                bodyEl.appendChild(el('div', 'aidfl-lbl', 'Try this first'));
+                var ol = el('ol', 'aidfl-steps');
+                for (var i = 0; steps.length > i; i++) {
+                    ol.appendChild(el('li', null, steps[i]));
+                }
+                bodyEl.appendChild(ol);
+            }
+
+            if (d.codeOrCommandSnippet) {
+                bodyEl.appendChild(el('div', 'aidfl-lbl', 'Command'));
+                var wrap = el('div', 'aidfl-codewrap');
+                var copyBtn = btn('aidfl-copy', 'copy');
+                wrap.appendChild(copyBtn);
+                wrap.appendChild(el('pre', 'aidfl-code', d.codeOrCommandSnippet));
+                bodyEl.appendChild(wrap);
+                copyBtn.addEventListener('click', copySnippet);
+            }
+
+            var meta = [];
+            if (d.sourcesCount) {
+                meta.push(d.sourcesCount + ' knowledge source' + (d.sourcesCount === 1 ? '' : 's'));
+            }
+            if (d.generatedByModel) {
+                meta.push('model ' + d.generatedByModel);
+            }
+            if (d.deflectionSuccessful === false) {
+                meta.push('below deflection threshold - review before relying on this');
+            }
+            if (meta.length) {
+                bodyEl.appendChild(el('div', 'aidfl-meta', meta.join('  -  ')));
+            }
+
+            footEl.className = 'aidfl-foot on';
+            open();
+        }
+
+        function showIdle() {
+            current = null;
+            badgeEl.style.display = 'none';
+            clear(bodyEl);
+            bodyEl.appendChild(el('div', 'aidfl-idle',
+                'Describe the problem above and a suggested fix will appear here ' +
+                'before you raise the ticket.'));
+            footEl.className = 'aidfl-foot';
+        }
+
+        function showLoading() {
+            badgeEl.style.display = 'none';
+            clear(bodyEl);
+            var load = el('div', 'aidfl-load');
+            load.appendChild(el('span', 'aidfl-spin'));
+            load.appendChild(document.createTextNode('Searching past incidents and knowledge...'));
+            bodyEl.appendChild(load);
+            footEl.className = 'aidfl-foot';
+        }
+
+        function showError(msg) {
+            badgeEl.style.display = 'none';
+            clear(bodyEl);
+            bodyEl.appendChild(el('div', 'aidfl-err', msg));
+            footEl.className = 'aidfl-foot';
+            lastKey = '';   // allow a retry on the next keystroke
+        }
+
+        // ---- actions --------------------------------------------------------
+        function onSolved() {
+            log('resolved');
+            badgeEl.style.display = 'none';
+            clear(bodyEl);
+            bodyEl.appendChild(el('div', 'aidfl-done',
+                'Glad that helped - no incident needed. You can close this form.'));
+            footEl.className = 'aidfl-foot';
+        }
+
+        function onContinue() {
+            log('continued');
+            close();
+        }
+
+        function log(action) {
+            var ga = new GlideAjax(SCOPE + '.AIDeflectionBroker');
+            ga.addParam('sysparm_name', 'logDeflection');
+            ga.addParam('sysparm_action', action);
+            ga.addParam('sysparm_dfl_text', currentText);
+            ga.addParam('sysparm_suggestion_id', current ? (current.suggestionId || '') : '');
+            ga.addParam('sysparm_correlation_id', current ? (current.correlationId || '') : '');
+            ga.addParam('sysparm_score', current ? (current.confidenceScore || 0) : 0);
+            ga.getXMLAnswer(function () {});
+        }
+
+        function copySnippet() {
+            var pre = bodyEl.querySelector('.aidfl-code');
+            if (!pre) { return; }
+            var ta = document.createElement('textarea');
+            ta.value = pre.textContent;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) { /* clipboard blocked */ }
+            document.body.removeChild(ta);
+            var b = bodyEl.querySelector('.aidfl-copy');
+            if (b) {
+                b.textContent = 'copied';
+                setTimeout(function () { b.textContent = 'copy'; }, 1500);
+            }
+        }
+
+        // ---- sidebar chrome -------------------------------------------------
+        function open() {
+            side.className = 'aidfl-side on';
+            if (PUSH_FORM) { document.body.style.paddingRight = SIDEBAR_W + 'px'; }
+        }
+
+        function close() {
+            side.className = 'aidfl-side';
+            document.body.style.paddingRight = '';
+        }
+
+        // ---- helpers --------------------------------------------------------
+        function bandOf(score) {
+            if (score >= 85) { return 'HIGH'; }
+            if (score >= 65) { return 'MEDIUM'; }
+            return 'LOW';
+        }
+
+        function toneOf(score) {
+            if (score >= 85) { return 'hi'; }
+            if (score >= 65) { return 'mid'; }
+            return 'lo';
+        }
+    })();
+    </script>
+</j:jelly>

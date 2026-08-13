@@ -30,87 +30,31 @@
     Renders summary, steps, and code snippet
   ============================================================
 -->
-<jelly trim="false"
-       xmlns:j="jelly:core"
-       xmlns:g="glide"
-       xmlns:j2="null"
-       xmlns:g2="null">
-
+<jelly trim="false" xmlns:j="jelly:core" xmlns:g="glide" xmlns:j2="null" xmlns:g2="null">
     <style>
-        .ai-popup-container {
-            padding: 15px;
-            font-family: Arial, sans-serif;
-        }
-
-        .ai-summary {
-            font-size: 14px;
-            font-weight: bold;
-            color: #293e40;
-            margin-bottom: 12px;
-            background: #eef7f8;
-            padding: 10px;
-            border-left: 4px solid #1f778a;
-            border-radius: 4px;
-        }
-
-        .ai-title {
-            font-size: 13px;
-            font-weight: bold;
-            margin-top: 10px;
-            margin-bottom: 5px;
-            color: #4b5563;
-        }
-
-        .ai-text-block {
-            font-size: 12px;
-            line-height: 1.5;
-            white-space: pre-line;
-            padding-left: 5px;
-            color: #333333;
-        }
-
-        .ai-code-block {
-            background: #1e1e1e;
-            color: #d4d4d4;
-            font-family: monospace;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 8px;
-            font-size: 12px;
-            overflow-x: auto;
-            white-space: pre-wrap;
-        }
+        .ai-popup-container { padding: 15px; font-family: Arial, sans-serif; }
+        .ai-summary { font-size: 14px; font-weight: bold; color: #293e40; margin-bottom: 12px; background: #eef7f8; padding: 10px; border-left: 4px solid #1f778a; border-radius: 4px; }
+        .ai-title { font-size: 13px; font-weight: bold; margin-top: 10px; margin-bottom: 5px; color: #4b5563; }
+        .ai-text-block { font-size: 12px; line-height: 1.5; white-space: pre-line; padding-left: 5px; color: #333333; }
+        .ai-code-block { background: #1e1e1e; color: #d4d4d4; font-family: monospace; padding: 10px; border-radius: 4px; margin-top: 8px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; }
     </style>
 
+    <!-- Sandbox-safe data data bindings -->
+    <div id="ai_data_anchor" 
+         style="display:none;"
+         data-summary="${sysparm_summary}" 
+         data-steps="${sysparm_steps}" 
+         data-code="${sysparm_code}"></div>
+
     <div class="ai-popup-container">
-
-        <div class="ai-summary">
-            <j:out value="${RP.getWindowProperties().get('sysparm_summary')}" />
+        <div class="ai-summary" id="modal_summary">Processing...</div>
+        
+        <div class="ai-title">📋 Recommended Steps:</div>
+        <div class="ai-text-block" id="modal_steps">Processing steps...</div>
+        
+        <div id="modal_code_section" style="display:none;">
+            <div class="ai-title">💻 Terminal Command / Snippet:</div>
+            <div class="ai-code-block" id="modal_code"></div>
         </div>
-
-        <div class="ai-title">
-            Recommended Steps:
-        </div>
-
-        <div class="ai-text-block">
-            <j:out value="${RP.getWindowProperties().get('sysparm_steps')}" />
-        </div>
-
-        <j:set var="jvar_code_val"
-               value="${RP.getWindowProperties().get('sysparm_code')}" />
-
-        <j:if test="${jvar_code_val != null}">
-            <j:if test="${jvar_code_val != ''}">
-                <div class="ai-title">
-                    Terminal Command / Snippet:
-                </div>
-
-                <div class="ai-code-block">
-                    <j:out value="${jvar_code_val}" />
-                </div>
-            </j:if>
-        </j:if>
-
     </div>
-
 </jelly>
