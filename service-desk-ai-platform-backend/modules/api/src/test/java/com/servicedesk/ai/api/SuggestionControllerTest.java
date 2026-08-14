@@ -2,7 +2,9 @@ package com.servicedesk.ai.api;
 
 import com.servicedesk.ai.api.controller.SuggestionController;
 import com.servicedesk.ai.api.dto.request.ResolveIncidentRequest;
+import com.servicedesk.ai.api.dto.response.SourceReference;
 import com.servicedesk.ai.api.dto.response.SuggestionResponse;
+import com.servicedesk.ai.api.mapper.SourceReferenceMapper;
 import com.servicedesk.ai.application.port.in.SuggestResolutionUseCase;
 import com.servicedesk.ai.domain.model.ConfidenceScore;
 import com.servicedesk.ai.domain.model.ResolutionSuggestion;
@@ -28,6 +30,9 @@ class SuggestionControllerTest {
 
     @Mock
     private SuggestResolutionUseCase suggestResolutionUseCase;
+
+    @Mock
+    private SourceReferenceMapper sourceReferenceMapper;
 
     @InjectMocks
     private SuggestionController suggestionController;
@@ -75,5 +80,42 @@ class SuggestionControllerTest {
         assertTrue(response.getBody().deflectionSuccessful());
 
         verify(suggestResolutionUseCase, times(1)).suggestResolution(any());
+    }
+
+    @Test
+    @DisplayName("Should cite the sources that grounded the suggestion")
+    void testResolveIncident_IncludesSources() {
+        SourceReference source = new SourceReference(
+            "INC0000015",
+            "INCIDENT",
+            "I can't launch my VPN client since the last software update",
+            "https://dev308607.service-now.com/incident.do?sys_id=46e2fee9",
+            0.624
+        );
+        when(suggestResolutionUseCase.suggestResolution(any())).thenReturn(mockSuggestion);
+        when(sourceReferenceMapper.toReferences(any())).thenReturn(List.of(source));
+
+        ResponseEntity<SuggestionResponse> response = suggestionController.resolveIncident(
+            new ResolveIncidentRequest("VPN down", "Client will not start", "u@e.com", "IT", "Network", 75));
+
+        List<SourceReference> sources = response.getBody().sources();
+        assertNotNull(sources, "sources must be present so the panel can attribute the answer");
+        assertEquals(1, sources.size());
+        assertEquals("INC0000015", sources.get(0).recordNumber());
+        assertNotNull(sources.get(0).url(), "a citation without a link cannot be followed");
+    }
+
+    @Test
+    @DisplayName("Should still answer when nothing could be cited")
+    void testResolveIncident_NoSources() {
+        when(suggestResolutionUseCase.suggestResolution(any())).thenReturn(mockSuggestion);
+        when(sourceReferenceMapper.toReferences(any())).thenReturn(List.of());
+
+        ResponseEntity<SuggestionResponse> response = suggestionController.resolveIncident(
+            new ResolveIncidentRequest("VPN down", "Client will not start", "u@e.com", "IT", "Network", 75));
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody().sources().isEmpty());
+        assertEquals("sug-1001", response.getBody().suggestionId());
     }
 }

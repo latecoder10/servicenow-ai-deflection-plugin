@@ -2,6 +2,7 @@ package com.servicedesk.ai.integration.servicenow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.servicedesk.ai.domain.AppConstants;
 import com.servicedesk.ai.domain.model.AttachmentMetadata;
 import com.servicedesk.ai.domain.model.Incident;
 import com.servicedesk.ai.domain.model.KnowledgeRecord;
@@ -25,6 +26,40 @@ import java.util.*;
 @Slf4j
 @Component
 public class ServiceNowRestAdapter implements ServiceNowPort {
+
+    /**
+     * Incident columns pulled for indexing.
+     *
+     * <p>Both resolution columns are requested. close_notes is the stock incident field
+     * and is where this platform's own seeder writes, while only resolution_notes was
+     * ever read - so every resolved incident was embedded with no resolution at all,
+     * which is the one thing a resolved-incident corpus exists to provide.
+     *
+     * <p>The dot-walked ".name" and ".email" variants sit alongside their reference
+     * columns. Under sysparm_display_value=false a reference returns a sys_id and no
+     * readable name; dot-walking adds the name without changing the shape of any other
+     * field, which switching display_value globally would.
+     *
+     * <p>work_notes and comments are journal fields. Instances differ in whether the
+     * Table API returns them on read, so they are requested and used when present
+     * rather than depended on.
+     */
+    static final String INCIDENT_FIELDS = String.join(",",
+        "sys_id", "number", "short_description", "description",
+        "category", "subcategory", "priority", "state",
+        "close_notes", "resolution_notes", "work_notes", "comments",
+        "assignment_group", "assignment_group.name",
+        "caller_id", "caller_id.email",
+        "department", "department.name",
+        "sys_created_on", "sys_updated_on");
+
+    /** Knowledge article columns. kb_category is a reference, so its label is dot-walked. */
+    static final String KB_FIELDS = String.join(",",
+        "sys_id", "number", "short_description", "text", "workflow_state",
+        "kb_category", "kb_category.label", "priority",
+        "assignment_group", "assignment_group.name",
+        "author", "author.email",
+        "sys_created_on", "sys_updated_on");
 
     private final ServiceNowConfig config;
     private final ServiceNowOAuth2Client oAuth2Client;
@@ -117,7 +152,7 @@ public class ServiceNowRestAdapter implements ServiceNowPort {
             .queryParam("sysparm_limit", limit)
             .queryParam("sysparm_offset", offset)
             .queryParam("sysparm_display_value", "false")
-            .queryParam("sysparm_fields", "sys_id,number,short_description,description,category,subcategory,priority,state,resolution_notes,assignment_group,caller_id,department,sys_created_on,sys_updated_on")
+            .queryParam("sysparm_fields", INCIDENT_FIELDS)
             .toUriString();
 
         log.info("[ServiceNow] GET {} (limit={}, offset={})", url, limit, offset);
@@ -150,7 +185,9 @@ public class ServiceNowRestAdapter implements ServiceNowPort {
             .queryParam("sysparm_limit", limit)
             .queryParam("sysparm_offset", offset)
             .queryParam("sysparm_display_value", "false")
-            .queryParam("sysparm_fields", "sys_id,number,title,short_description,body,workflow_state,kb_category,priority,assignment_group,sys_created_on,sys_updated_on")
+            // "text" is the article body on kb_knowledge; "title" and "body" do not exist
+            // on that table and were silently returning nothing.
+            .queryParam("sysparm_fields", KB_FIELDS)
             .toUriString();
 
         log.info("[ServiceNow] GET {} (limit={}, offset={})", url, limit, offset);
@@ -185,12 +222,15 @@ public class ServiceNowRestAdapter implements ServiceNowPort {
                 .title(inc.getTitle())
                 .description(inc.getDescription())
                 .resolutionNotes(inc.getResolutionNotes())
-                .category(inc.getCategory())
-                .priority(inc.getPriority())
+                .category(blankTo(inc.getCategory(), AppConstants.DEFAULT_CATEGORY))
+                .priority(blankTo(inc.getPriority(), AppConstants.DEFAULT_PRIORITY))
                 .assignmentGroup(inc.getAssignedGroup())
-                .department(inc.getDepartment())
+                .department(blankTo(inc.getDepartment(), AppConstants.DEFAULT_DEPARTMENT))
+                .workspace(AppConstants.DEFAULT_WORKSPACE)
                 .recordType("INCIDENT")
                 .state(inc.getState())
+                .connectorType(AppConstants.CONNECTOR_SERVICENOW)
+                .sourceUrl(buildRecordUrl("incident", inc.getSysId()))
                 .sysUpdatedOn(inc.getSysUpdatedOn())
                 .build());
         }
@@ -208,7 +248,8 @@ public class ServiceNowRestAdapter implements ServiceNowPort {
                     .recordSysId(result.path("sys_id").asText(null))
                     .recordNumber(result.path("number").asText(null))
                     .title(result.path("short_description").asText(null))
-                    .description(result.path("body").asText(null))
+                    // "text" is the article body; "body" does not exist on kb_knowledge.
+                    .description(stripHtml(result.path("text").asText("")))
                     .category(result.path("kb_category").asText(null))
                     .priority(result.path("priority").asText(null))
                     .assignmentGroup(result.path("assignment_group").asText(null))
@@ -239,17 +280,32 @@ public class ServiceNowRestAdapter implements ServiceNowPort {
                 .title(inc.getTitle())
                 .description(inc.getDescription())
                 .resolutionNotes(inc.getResolutionNotes())
-                .category(inc.getCategory() != null ? inc.getCategory() : "General IT")
-                .priority(inc.getPriority() != null ? inc.getPriority() : "3 - Moderate")
+                // Fetched over the wire but previously dropped at this boundary, so the
+                // embedded text lost the journal notes and the subcategory entirely.
+                .workNotes(inc.getWorkNotes())
+                .comments(inc.getComments())
+                .subcategory(inc.getSubcategory())
+                .ownerEmail(inc.getCallerEmail())
+                // blankTo, not a null check: an unset ServiceNow field arrives as "",
+                // which is not null, so the fallbacks below never fired and the empty
+                // value was indexed as the record's department and category.
+                .category(blankTo(inc.getCategory(), AppConstants.DEFAULT_CATEGORY))
+                .priority(blankTo(inc.getPriority(), AppConstants.DEFAULT_PRIORITY))
                 .assignmentGroup(inc.getAssignedGroup())
-                .department(inc.getDepartment() != null ? inc.getDepartment() : "Global Service Desk")
-                .workspace("Enterprise IT")
+                .department(blankTo(inc.getDepartment(), AppConstants.DEFAULT_DEPARTMENT))
+                .workspace(AppConstants.DEFAULT_WORKSPACE)
                 .recordType("INCIDENT")
                 .state(inc.getState())
-                .connectorType("SERVICENOW")
+                .connectorType(AppConstants.CONNECTOR_SERVICENOW)
+                .sourceUrl(buildRecordUrl("incident", inc.getSysId()))
                 .sysCreatedOn(inc.getSysCreatedOn())
                 .sysUpdatedOn(inc.getSysUpdatedOn())
-                .attachments(fetchAttachmentsMetadataForRecord("incident", inc.getSysId()))
+                // One extra round trip per record, for a count nothing acts on. Skipped
+                // unless attachment indexing is switched on, which turns a 500-record
+                // sync from 501 API calls back into one.
+                .attachments(config.isFetchAttachmentMetadata()
+                    ? fetchAttachmentsMetadataForRecord("incident", inc.getSysId())
+                    : List.of())
                 .build());
         }
 
@@ -467,39 +523,128 @@ public class ServiceNowRestAdapter implements ServiceNowPort {
 
     // ──────────────────────── MAPPERS ────────────────────────
 
+    /**
+     * A usable value for a field, or null when there is nothing readable there.
+     *
+     * Two shapes reach here that {@code asText(default)} does not defend against, because
+     * Jackson applies that default only for a missing or null node. An unset field comes
+     * back as "", and with sysparm_display_value=false a reference field (department,
+     * assignment_group, caller_id) comes back as a {link, value} object whose asText() is
+     * also "". Both were then waved past every "!= null" guard downstream until an empty
+     * department reached the vector index, where it matched no department filter and made
+     * every filtered search silently fall back to unfiltered results.
+     */
+    static String textOrNull(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        if (value.isMissingNode() || value.isNull()) {
+            return null;
+        }
+        // Tolerates sysparm_display_value=all, which wraps each field and does carry a
+        // readable name; a bare {link, value} from display_value=false does not.
+        if (value.isObject()) {
+            String display = value.path("display_value").asText("");
+            return display.isBlank() ? null : display;
+        }
+        String text = value.asText("");
+        return text.isBlank() ? null : text;
+    }
+
+    private static String textOr(JsonNode node, String field, String fallback) {
+        String value = textOrNull(node, field);
+        return value != null ? value : fallback;
+    }
+
+    /** The value, or the fallback when it is null <em>or</em> blank. */
+    private static String blankTo(String value, String fallback) {
+        return (value == null || value.isBlank()) ? fallback : value;
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A reference field's readable name, preferring the dot-walked column. Falls back to
+     * the bare reference, which is a sys_id and therefore usually unusable - but a
+     * sys_id beats nothing on an instance where the dot-walk was rejected.
+     */
+    private static String reference(JsonNode node, String field) {
+        return firstNonBlank(textOrNull(node, field + ".name"), textOrNull(node, field));
+    }
+
+    /** A link back to the record in ServiceNow, or null when the instance is unconfigured. */
+    private String buildRecordUrl(String table, String sysId) {
+        String instance = config.getInstanceUrl();
+        if (instance == null || instance.isBlank() || sysId == null || sysId.isBlank()) {
+            return null;
+        }
+        return instance.replaceAll("/+$", "") + "/" + table + ".do?sys_id=" + sysId;
+    }
+
     private Incident mapIncidentFromJson(JsonNode node) {
         return Incident.builder()
             .sysId(node.path("sys_id").asText())
             .number(node.path("number").asText())
             .title(node.path("short_description").asText())
-            .description(node.path("description").asText(""))
-            .category(node.path("category").asText(""))
-            .subcategory(node.path("subcategory").asText(""))
+            .description(textOrNull(node, "description"))
+            .category(textOrNull(node, "category"))
+            .subcategory(textOrNull(node, "subcategory"))
             .priority(mapPriorityReverse(node.path("priority").asText()))
-            .state(node.path("state").asText(""))
-            .resolutionNotes(node.path("resolution_notes").asText(""))
-            .assignedGroup(node.path("assignment_group").asText(""))
-            .callerEmail(node.path("caller_id").asText(""))
-            .department(node.path("department").asText(""))
+            .state(textOrNull(node, "state"))
+            // close_notes first: it is the stock resolution column and where this
+            // platform's own seeder writes. resolution_notes exists only on some
+            // instances, and reading it alone left every incident without a resolution.
+            .resolutionNotes(firstNonBlank(textOrNull(node, "close_notes"),
+                                           textOrNull(node, "resolution_notes")))
+            .workNotes(textOrNull(node, "work_notes"))
+            .comments(textOrNull(node, "comments"))
+            .assignedGroup(reference(node, "assignment_group"))
+            // Only the dot-walked address. The bare caller_id is a sys_id, and a sys_id
+            // sitting in an email field is worse than an empty one.
+            .callerEmail(textOrNull(node, "caller_id.email"))
+            .department(reference(node, "department"))
             .sysCreatedOn(parseInstant(node.path("sys_created_on").asText("")))
             .sysUpdatedOn(parseInstant(node.path("sys_updated_on").asText("")))
             .build();
     }
 
     private KnowledgeRecord mapKnowledgeArticleFromJson(JsonNode node) {
+        // kb_knowledge has no "title" or "body" column: short_description carries the
+        // title and "text" carries the article. Reading the non-existent fields left
+        // every knowledge article indexed with an empty title, so a citation showed a
+        // bare KB number and the embedded payload opened with "Title: ".
+        // ServiceNow short descriptions frequently carry trailing tabs and newlines.
+        // Cleaning at index time keeps them out of the vector metadata and the embedded
+        // payload, rather than papering over it wherever the title is displayed.
+        String shortDescription = stripHtml(node.path("short_description").asText(""));
+        String articleText = stripHtml(node.path("text").asText(""));
+        String sysId = node.path("sys_id").asText();
+
         return KnowledgeRecord.builder()
-            .recordSysId(node.path("sys_id").asText())
+            .recordSysId(sysId)
             .recordNumber(node.path("number").asText())
-            .title(node.path("title").asText())
-            .description(node.path("short_description").asText("") + "\n" + stripHtml(node.path("body").asText("")))
-            .category(node.path("kb_category").asText("General"))
-            .priority(node.path("priority").asText("3 - Moderate"))
-            .assignmentGroup(node.path("assignment_group").asText(""))
-            .workspace("Enterprise IT")
+            .title(shortDescription)
+            .description(articleText.isBlank() ? shortDescription : articleText)
+            // kb_category is a reference field, so it arrives as an object and its text
+            // default never applied; every article was indexed with an empty category.
+            // Its display column is "label", not "name".
+            .category(blankTo(firstNonBlank(textOrNull(node, "kb_category.label"),
+                                            textOrNull(node, "kb_category")),
+                              AppConstants.DEFAULT_CATEGORY))
+            .priority(textOr(node, "priority", AppConstants.DEFAULT_PRIORITY))
+            .assignmentGroup(reference(node, "assignment_group"))
+            .ownerEmail(textOrNull(node, "author.email"))
+            .workspace(AppConstants.DEFAULT_WORKSPACE)
             .department("Knowledge Management")
             .recordType("KNOWLEDGE_ARTICLE")
-            .state(node.path("workflow_state").asText("published"))
-            .connectorType("SERVICENOW")
+            .state(textOr(node, "workflow_state", "published"))
+            .connectorType(AppConstants.CONNECTOR_SERVICENOW)
+            .sourceUrl(buildRecordUrl("kb_knowledge", sysId))
             .sysCreatedOn(parseInstant(node.path("sys_created_on").asText("")))
             .sysUpdatedOn(parseInstant(node.path("sys_updated_on").asText("")))
             .build();
@@ -545,8 +690,61 @@ public class ServiceNowRestAdapter implements ServiceNowPort {
         return parseServiceNowDate(value);
     }
 
-    private String stripHtml(String html) {
+    /**
+     * Turns a ServiceNow rich-text field into plain prose.
+     *
+     * Entities have to be decoded, not just tags removed. Knowledge bodies are full of
+     * them, and leaving "&#43;" or "&#34;" in place puts that noise into the embedding
+     * and onto the agent's screen: an article reading 'press CTRL &#43; F5' is worse
+     * than useless as a search target.
+     */
+    static String stripHtml(String html) {
         if (html == null) return "";
-        return html.replaceAll("<[^>]+>", "").replaceAll("\\s+", " ").trim();
+
+        String text = html
+            .replaceAll("(?i)<br\\s*/?>", " ")
+            .replaceAll("(?i)</(p|div|li|tr|h[1-6])>", " ")
+            .replaceAll("<[^>]+>", " ");
+
+        text = decodeEntities(text);
+        // Non-breaking spaces survive decoding and are not matched by \s in Java.
+        text = text.replace(' ', ' ');
+        return text.replaceAll("\\s+", " ").trim();
+    }
+
+    /** Named entities that actually appear in ServiceNow content, plus all numeric ones. */
+    private static String decodeEntities(String text) {
+        String out = text
+            .replace("&nbsp;", " ")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&ndash;", "-")
+            .replace("&mdash;", "-")
+            .replace("&rsquo;", "'")
+            .replace("&lsquo;", "'")
+            .replace("&ldquo;", "\"")
+            .replace("&rdquo;", "\"")
+            .replace("&hellip;", "...");
+
+        // &#43; and &#x2B; style references, whatever the character.
+        StringBuilder sb = new StringBuilder();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("&#(x?)([0-9A-Fa-f]+);").matcher(out);
+        while (m.find()) {
+            String replacement;
+            try {
+                int code = Integer.parseInt(m.group(2), m.group(1).isEmpty() ? 10 : 16);
+                replacement = String.valueOf((char) code);
+            } catch (Exception e) {
+                replacement = m.group();   // leave anything unparseable alone
+            }
+            m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(sb);
+
+        // Ampersand last, so a decoded "&amp;#43;" does not become a second entity.
+        return sb.toString().replace("&amp;", "&");
     }
 }

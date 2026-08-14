@@ -28,6 +28,15 @@
             font-family:inherit;box-shadow:-2px 0 8px rgba(20,24,28,.08);}
         .aidfl-side.on{display:flex;}
 
+        /* Brand strip: white, so the panel reads as part of the ServiceNow form
+           rather than as a third-party widget bolted onto it. */
+        .aidfl-brand{display:flex;align-items:center;justify-content:space-between;
+            padding:10px 16px;background:#fff;border-bottom:1px solid #E3E6EB;flex-shrink:0;}
+        .aidfl-brandtxt{font-size:17px;font-weight:800;letter-spacing:.6px;color:#C41230;
+            font-family:Georgia,"Times New Roman",serif;}
+        .aidfl-brandsub{font-size:10px;letter-spacing:.3px;color:#5C6B7A;
+            text-transform:uppercase;white-space:nowrap;}
+
         .aidfl-head{padding:12px 15px;border-bottom:1px solid #E3E6E9;background:#FBFCFC;
             display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;}
         .aidfl-h{font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#1F7A8C;}
@@ -65,6 +74,54 @@
             cursor:pointer;font-family:inherit;}
         .aidfl-copy:hover{background:rgba(255,255,255,.22);}
 
+        .aidfl-srcctl{padding:10px 15px 11px;border-bottom:1px solid #E3E6E9;background:#fff;flex-shrink:0;}
+        .aidfl-srcctl .aidfl-lbl{margin:0 0 7px;}
+        .aidfl-togglerow{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+        .aidfl-togglelbl{font-size:12px;color:#3D444B;}
+
+        .aidfl-switch{position:relative;display:inline-block;width:34px;height:19px;flex-shrink:0;}
+        .aidfl-switch input{opacity:0;width:0;height:0;position:absolute;}
+        .aidfl-track{position:absolute;inset:0;background:#C8CDD2;border-radius:19px;
+            cursor:pointer;transition:background .18s ease;}
+        .aidfl-track:before{content:"";position:absolute;height:15px;width:15px;left:2px;top:2px;
+            background:#fff;border-radius:50%;transition:transform .18s ease;
+            box-shadow:0 1px 2px rgba(0,0,0,.25);}
+        .aidfl-switch input:checked + .aidfl-track{background:#C41230;}
+        .aidfl-switch input:checked + .aidfl-track:before{transform:translateX(15px);}
+        .aidfl-switch input:focus-visible + .aidfl-track{outline:2px solid #1F7A8C;outline-offset:2px;}
+        .aidfl-switch input:disabled + .aidfl-track{opacity:.45;cursor:not-allowed;}
+
+        .aidfl-conn{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:10.5px;}
+        .aidfl-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#B8BDC2;}
+        .aidfl-conn.ok .aidfl-dot{background:#3F8F5F;}
+        .aidfl-conn.ok .aidfl-conntxt{color:#2C6C47;}
+        .aidfl-conn.off .aidfl-dot{background:#B45454;}
+        .aidfl-conn.off .aidfl-conntxt{color:#8A3A3A;}
+        .aidfl-conn.checking .aidfl-conntxt{color:#9AA0A6;}
+
+        .aidfl-srcs{display:flex;flex-direction:column;}
+        .aidfl-src{display:flex;align-items:baseline;gap:7px;font-size:11.5px;line-height:1.45;
+            padding:7px 0;border-bottom:1px solid #F0F2F4;}
+        .aidfl-src:last-child{border-bottom:none;}
+        .aidfl-tag{flex-shrink:0;font-size:8.5px;font-weight:700;letter-spacing:.5px;
+            padding:2px 5px;border-radius:3px;border:1px solid transparent;}
+        .aidfl-tag.kb{background:#EAF6EE;color:#2C6C47;border-color:#CFE6D4;}
+        .aidfl-tag.inc{background:#EEF3F8;color:#3D5A80;border-color:#D6E1EC;}
+        .aidfl-tag.drive{background:#EDF7EE;color:#2E7D32;border-color:#CBE5CD;}
+        .aidfl-srclink{color:#1F7A8C;text-decoration:none;}
+        .aidfl-srclink:hover{color:#155C6B;text-decoration:underline;}
+        .aidfl-srcnum{flex-shrink:0;margin-left:auto;color:#9AA0A6;font-size:10px;}
+        .aidfl-srcttl{color:#3D444B;}
+
+        .aidfl-matched{margin-top:11px;font-size:10.5px;color:#9AA0A6;line-height:1.6;}
+        .aidfl-matchlink{color:#1F7A8C;text-decoration:none;font-weight:600;
+            border-bottom:1px solid #C6DDE2;}
+        .aidfl-matchlink:hover{color:#155C6B;border-bottom-color:#1F7A8C;}
+        .aidfl-matchnum{color:#5A6169;font-weight:600;}
+
+        .aidfl-note{margin-top:9px;font-size:10.5px;color:#8A6116;background:#FDF9EF;
+            border:1px solid #F0E4C8;border-radius:4px;padding:7px 9px;line-height:1.5;}
+
         .aidfl-meta{font-size:10.5px;color:#9AA0A6;margin-top:14px;padding-top:9px;
             border-top:1px dotted #E3E6E9;line-height:1.6;}
 
@@ -100,6 +157,8 @@
         var PUSH_FORM        = true;   // pad the form so the sidebar never overlaps
 
         var shortEl, descEl, side, bodyEl, badgeEl, footEl;
+        var driveToggle = null, driveStatusEl = null;
+        var includeDrive = true, driveConnected = false;
         var timer = null, lastKey = '', inflight = false, currentText = '', current = null;
         var tries = 0;
 
@@ -155,11 +214,19 @@
             side.className = 'aidfl-side';
             side.style.width = SIDEBAR_W + 'px';
 
+            var brand = el('div', 'aidfl-brand');
+            brand.appendChild(el('span', 'aidfl-brandtxt', 'ESTUATE'));
+            brand.appendChild(el('span', 'aidfl-brandsub', 'Powered by Estuate'));
+
             var head = el('div', 'aidfl-head');
             head.appendChild(el('span', 'aidfl-h', 'Before you submit'));
             badgeEl = el('span', 'aidfl-badge lo');
             badgeEl.style.display = 'none';
             head.appendChild(badgeEl);
+
+            side.appendChild(brand);
+            side.appendChild(head);
+            side.appendChild(buildSourceControls());
 
             bodyEl = el('div', 'aidfl-body');
 
@@ -169,13 +236,98 @@
             footEl.appendChild(solveBtn);
             footEl.appendChild(dismissBtn);
 
-            side.appendChild(head);
             side.appendChild(bodyEl);
             side.appendChild(footEl);
             document.body.appendChild(side);
 
             solveBtn.addEventListener('click', onSolved);
             dismissBtn.addEventListener('click', onContinue);
+        }
+
+        // Lets the agent decide whether shared-drive documents count as evidence, and
+        // shows whether that source is actually reachable right now.
+        function buildSourceControls() {
+            var wrap = el('div', 'aidfl-srcctl');
+            wrap.appendChild(el('div', 'aidfl-lbl', 'Article source'));
+
+            var row = el('div', 'aidfl-togglerow');
+            row.appendChild(el('span', 'aidfl-togglelbl', 'Include Google Drive results'));
+
+            // A real checkbox keeps it keyboard reachable; the CSS draws the switch.
+            var label = el('label', 'aidfl-switch');
+            driveToggle = document.createElement('input');
+            driveToggle.type = 'checkbox';
+            driveToggle.checked = includeDrive;
+            driveToggle.setAttribute('aria-label', 'Include Google Drive results');
+            var track = el('span', 'aidfl-track');
+            label.appendChild(driveToggle);
+            label.appendChild(track);
+            row.appendChild(label);
+            wrap.appendChild(row);
+
+            driveStatusEl = el('div', 'aidfl-conn checking');
+            driveStatusEl.appendChild(el('span', 'aidfl-dot'));
+            driveStatusEl.appendChild(el('span', 'aidfl-conntxt', 'Checking Google Drive...'));
+            wrap.appendChild(driveStatusEl);
+
+            driveToggle.addEventListener('change', function () {
+                includeDrive = driveToggle.checked;
+                // Re-ask immediately: the switch changes the answer, not just the view.
+                lastKey = '';
+                evaluate();
+            });
+
+            fetchConnectorStatus();
+            return wrap;
+        }
+
+        function fetchConnectorStatus() {
+            var ga = new GlideAjax(SCOPE + '.AIDeflectionBroker');
+            ga.addParam('sysparm_name', 'getConnectorStatus');
+            ga.getXMLAnswer(function (answer) {
+                // Three outcomes, not two. An empty payload means the broker could not
+                // reach the backend at all, which is not the same as Drive reporting
+                // itself disconnected. Collapsing the two blamed Drive for a dead
+                // tunnel and showed "Google Drive unavailable" while the panel was
+                // still displaying Drive documents it had already retrieved.
+                var state = 'unknown';
+                try {
+                    var d = JSON.parse(answer);
+                    var all = d.connectors || {};
+                    if (all.GOOGLE_DRIVE) {
+                        state = (all.GOOGLE_DRIVE.connected === true) ? 'ok' : 'off';
+                    }
+                } catch (e) {
+                    state = 'unknown';
+                }
+                setDriveStatus(state);
+            });
+        }
+
+        function setDriveStatus(state) {
+            driveConnected = (state === 'ok');
+            if (!driveStatusEl) { return; }
+
+            var cls = 'checking';
+            var text = 'Google Drive status unknown';
+            if (state === 'ok') { cls = 'ok'; text = 'Google Drive connected'; }
+            if (state === 'off') { cls = 'off'; text = 'Google Drive unavailable'; }
+
+            driveStatusEl.className = 'aidfl-conn ' + cls;
+            driveStatusEl.childNodes[1].textContent = text;
+
+            if (!driveToggle) { return; }
+
+            // Only an affirmative "disconnected" disables the switch. Disabling on a
+            // failed check left the toggle dead for the life of the page, so a tunnel
+            // that recovered still showed Drive as unavailable until a full reload.
+            if (state === 'off') {
+                driveToggle.checked = false;
+                driveToggle.disabled = true;
+                includeDrive = false;
+                return;
+            }
+            driveToggle.disabled = false;
         }
 
         function attach(elm) {
@@ -212,6 +364,7 @@
             ga.addParam('sysparm_title', s);
             ga.addParam('sysparm_description', d);
             ga.addParam('sysparm_category', g_form.getValue('category') || 'Software');
+            ga.addParam('sysparm_include_drive', includeDrive ? 'true' : 'false');
 
             ga.getXMLAnswer(function (answer) {
                 inflight = false;
@@ -272,6 +425,17 @@
                 copyBtn.addEventListener('click', copySnippet);
             }
 
+            var sources = d.sources || [];
+
+            // The strongest match sits directly under the answer, linked, so the agent
+            // can open the record the resolution was actually drawn from without
+            // scanning the alternatives below.
+            if (sources.length) {
+                bodyEl.appendChild(matchedAgainst(sources[0]));
+            }
+
+            renderSources(sources.slice(1));
+
             var meta = [];
             if (d.sourcesCount) {
                 meta.push(d.sourcesCount + ' knowledge source' + (d.sourcesCount === 1 ? '' : 's'));
@@ -288,6 +452,100 @@
 
             footEl.className = 'aidfl-foot on';
             open();
+
+            // An answer arriving proves the backend is reachable. Re-test the source
+            // status so a check that failed while the tunnel was down heals itself,
+            // rather than requiring a full page reload to clear.
+            if (!driveConnected) { fetchConnectorStatus(); }
+        }
+
+        // "matched against IT-002 - score 0.71", where the identifier opens the source.
+        function matchedAgainst(s) {
+            var row = el('div', 'aidfl-matched');
+            row.appendChild(el('span', null, 'matched against '));
+
+            var label = s.recordNumber || s.title || 'source';
+            if (s.url) {
+                var link = document.createElement('a');
+                link.className = 'aidfl-matchlink';
+                link.href = s.url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = label;
+                link.title = s.title || label;
+                row.appendChild(link);
+            } else {
+                row.appendChild(el('span', 'aidfl-matchnum', label));
+            }
+
+            if (typeof s.relevance === 'number') {
+                row.appendChild(el('span', null, '  -  score ' + s.relevance));
+            }
+            return row;
+        }
+
+        // The other candidates the search turned up, as a list the agent can open.
+        // Each row is labelled by where it came from, so it is obvious whether they are
+        // about to read published guidance, a shared document, or someone else's ticket.
+        function renderSources(sources) {
+            if (!sources.length) { return; }
+
+            var heading = sources.length === 1
+                ? 'Other possible solution'
+                : sources.length + ' other possible solutions';
+            bodyEl.appendChild(el('div', 'aidfl-lbl', heading));
+
+            var list = el('div', 'aidfl-srcs');
+            for (var i = 0; sources.length > i; i++) {
+                list.appendChild(sourceRow(sources[i]));
+            }
+            bodyEl.appendChild(list);
+
+            // When Drive is switched off, say so rather than leaving the agent to wonder
+            // whether there simply were no shared documents worth showing.
+            if (!includeDrive) {
+                bodyEl.appendChild(el('div', 'aidfl-note',
+                    'Google Drive results are turned off. Switch them on above to search '
+                    + 'shared documents as well.'));
+            }
+        }
+
+        function sourceRow(s) {
+            var row = el('div', 'aidfl-src');
+            var kind = sourceKind(s.recordType);
+
+            row.appendChild(el('span', 'aidfl-tag ' + kind.cls, kind.label));
+
+            // The title is what a person recognises, so it leads. The record number is
+            // secondary detail. Only linkable when the backend resolved a URL.
+            var text = s.title || s.recordNumber || 'source';
+            var body;
+            if (s.url) {
+                body = document.createElement('a');
+                body.className = 'aidfl-srclink';
+                body.href = s.url;
+                body.target = '_blank';
+                body.rel = 'noopener noreferrer';
+                body.textContent = text;
+            } else {
+                body = el('span', 'aidfl-srcttl', text);
+            }
+            row.appendChild(body);
+
+            if (s.recordNumber) {
+                if (s.title) {
+                    row.appendChild(el('span', 'aidfl-srcnum', s.recordNumber));
+                }
+            }
+            return row;
+        }
+
+        function sourceKind(recordType) {
+            var t = (recordType || '').toUpperCase();
+            if (t.indexOf('DRIVE') > -1) { return { cls: 'drive', label: 'DRIVE' }; }
+            if (t.indexOf('KB') === 0) { return { cls: 'kb', label: 'KB' }; }
+            if (t.indexOf('INCIDENT') > -1) { return { cls: 'inc', label: 'INC' }; }
+            return { cls: 'inc', label: 'DOC' };
         }
 
         function showIdle() {

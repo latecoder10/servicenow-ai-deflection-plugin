@@ -1,6 +1,5 @@
 package com.servicedesk.ai.domain.port.out;
 
-import com.servicedesk.ai.domain.model.AttachmentMetadata;
 import com.servicedesk.ai.domain.model.KnowledgeRecord;
 import com.servicedesk.ai.domain.model.SyncRequest;
 import com.servicedesk.ai.domain.model.SyncResult;
@@ -36,13 +35,4 @@ public interface KnowledgeConnector {
      */
     List<KnowledgeRecord> fetchChanges(Instant since, int maxLimit);
 
-    /**
-     * Retrieves attachment metadata reference without fetching binary contents.
-     */
-    AttachmentMetadata getAttachmentMetadata(String attachmentId);
-
-    /**
-     * Streams or fetches attachment content binary on-demand from source system API.
-     */
-    byte[] downloadAttachmentContent(String attachmentId);
 }

@@ -36,7 +36,18 @@ public class KnowledgeRecord {
     private String recordType; // INCIDENT or KNOWLEDGE_ARTICLE
     private String state; // Resolved, Closed, Published
     private String connectorType; // SERVICENOW, JIRA, CONFLUENCE, SHAREPOINT
-    
+
+    /**
+     * A link back to the record in the system it came from. Set by the connector, which
+     * is the only layer that knows its own instance address, so a retrieved chunk can be
+     * cited without the citation layer having to reconstruct a URL by convention.
+     */
+    private String sourceUrl;
+
+    /** Caller's address on an incident, article author's on a KB record. */
+    private String ownerEmail;
+
+
     private Instant sysCreatedOn;
     private Instant sysUpdatedOn;
 

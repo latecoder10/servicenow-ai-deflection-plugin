@@ -19,6 +19,7 @@
         <module>modules/knowledge-loader</module>
         <module>modules/integration/pinecone</module>
         <module>modules/integration/servicenow</module>
+        <module>modules/integration/gdrive</module>
         <module>modules/integration/llm</module>
         <module>modules/analytics</module>
         <module>modules/security</module>
@@ -92,6 +93,11 @@
             <dependency>
                 <groupId>com.servicedesk.ai</groupId>
                 <artifactId>servicenow-integration</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.servicedesk.ai</groupId>
+                <artifactId>gdrive-integration</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

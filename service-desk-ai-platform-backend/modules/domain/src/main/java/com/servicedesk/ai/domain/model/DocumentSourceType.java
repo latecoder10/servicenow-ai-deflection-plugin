@@ -11,5 +11,6 @@ public enum DocumentSourceType {
     SERVICENOW_INCIDENT,
     CONFLUENCE_PAGE,
     SHAREPOINT_DOC,
+    GOOGLE_DRIVE_DOC,
     ZIP_ARCHIVE
 }

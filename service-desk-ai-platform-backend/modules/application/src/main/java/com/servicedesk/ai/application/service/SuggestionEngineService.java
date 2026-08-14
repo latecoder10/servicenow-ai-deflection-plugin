@@ -23,6 +23,7 @@ public class SuggestionEngineService implements SuggestResolutionUseCase {
     private final LlmPort llmPort;
     private final ConfidenceCalculator confidenceCalculator;
     private final PromptBuilderService promptBuilderService;
+    private final DeflectionTelemetryService telemetryService;
 
     @Override
     public ResolutionSuggestion suggestResolution(Command command) {
@@ -40,12 +41,17 @@ public class SuggestionEngineService implements SuggestResolutionUseCase {
 
         // 2. Vector Search across Pinecone collections
         stepStart = System.currentTimeMillis();
+        java.util.Set<String> excludedSources = command.includeDriveResults()
+            ? java.util.Set.of()
+            : java.util.Set.of("GOOGLE_DRIVE");
+
         List<KnowledgeChunk> candidateChunks = vectorDatabasePort.similaritySearch(
             "Knowledge_Articles",
             queryVector,
             8,
             command.userDepartment(),
-            command.category()
+            command.category(),
+            excludedSources
         );
         long searchTime = System.currentTimeMillis() - stepStart;
         log.info("[SuggestionEngine][{}] Step 2 - Pinecone Search: {}ms (found {} candidates)", cid, searchTime, candidateChunks.size());
@@ -93,6 +99,17 @@ public class SuggestionEngineService implements SuggestResolutionUseCase {
         log.info("[SuggestionEngine][{}] COMPLETED in {}ms | suggestionId={} | confidence={} | deflected={} | steps=[embed:{}ms, search:{}ms, rerank:{}ms, confidence:{}ms, prompt:{}ms, llm:{}ms]",
             cid, totalTime, suggestion.getSuggestionId(), confidenceScore.value(), suggestion.isDeflectionSuccessful(),
             embeddingTime, searchTime, rerankTime, confidenceTime, promptTime, llmTime);
+
+        // Persist what happened. Deflection rate, cost saved and the categories that
+        // generate the most questions are all derived from these rows.
+        telemetryService.recordSuggestion(
+            suggestion, command.category(), command.userDepartment(), command.callerEmail(), totalTime);
+
+        // The query and how well the corpus answered it, kept separately: a question
+        // nobody could answer is the clearest evidence of a knowledge gap.
+        Double topScore = topChunks.isEmpty() ? null : topChunks.get(0).getRelevanceScore();
+        telemetryService.recordSearch(combinedQuery, command.userDepartment(), command.category(),
+            8, topChunks.size(), topScore, searchTime, "DEFLECTION_PANEL");
 
         return suggestion;
     }

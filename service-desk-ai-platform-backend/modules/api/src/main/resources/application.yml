@@ -86,6 +86,13 @@ ai:
     dimension: 1024
     namespace-prefix: ""
 
+  # Reranking. Similarity stays dominant; these only reorder comparable matches.
+  # Set both weights to 0 for pure semantic ordering.
+  ranking:
+    priority-weight: ${AI_RANKING_PRIORITY_WEIGHT:0.15}      # boost at ServiceNow priority 1
+    recency-weight: ${AI_RANKING_RECENCY_WEIGHT:0.10}        # boost for a current-year record
+    recency-horizon-years: ${AI_RANKING_RECENCY_HORIZON:5}   # age at which recency stops helping
+
 # ──────────────────────── SERVICENOW ────────────────────────
 servicenow:
   instance-url: ${SERVICENOW_INSTANCE_URL:}
@@ -98,8 +105,25 @@ servicenow:
   connection-timeout-ms: 5000
   read-timeout-ms: 15000
 
+# ──────────────────────── GOOGLE DRIVE ────────────────────────
+# Service account JSON key; the account's client_email needs Viewer on the folder.
+# Folder id is the last path segment of the Drive folder URL.
+gdrive:
+  enabled: ${GDRIVE_ENABLED:false}
+  credentials-path: ${GDRIVE_CREDENTIALS_PATH:./secrets/service-account.json}
+  folder-id: ${GDRIVE_FOLDER_ID:}
+  drive-id: ${GDRIVE_DRIVE_ID:}              # only for a shared drive
+  page-size: 100
+  max-files-per-sync: ${GDRIVE_MAX_FILES:500}
+  watermark-overlap-seconds: 300             # re-checks the edge so nothing is missed
+  connection-timeout-ms: 10000
+  read-timeout-ms: 60000
+
 # ──────────────────────── SCHEDULER ────────────────────────
 scheduler:
+  gdrive:
+    enabled: ${SCHEDULER_GDRIVE_ENABLED:false}
+    cron: ${SCHEDULER_GDRIVE_CRON:0 30 2 * * ?}   # daily at 2:30 AM, after the ServiceNow sync
   servicenow:
     enabled: ${SCHEDULER_SERVICENOW_ENABLED:true}
     cron: ${SCHEDULER_SERVICENOW_CRON:0 0 2 * * ?}   # daily at 2 AM
@@ -127,6 +151,20 @@ resilience4j:
           - org.springframework.web.client.HttpServerErrorException
           - java.io.IOException
           - com.servicedesk.ai.common.exception.IntegrationException
+
+# ──────────────────────── KNOWLEDGE ────────────────────────
+knowledge:
+  synthetic-data:
+    # Writes fabricated incidents into the connected instance. Demo seeding only;
+    # never enable against an instance holding real tickets.
+    enabled: ${KNOWLEDGE_SYNTHETIC_ENABLED:false}
+
+# ──────────────────────── ANALYTICS ────────────────────────
+analytics:
+  # Loaded cost of an agent handling one ticket. Drives the savings figure, so it
+  # should be agreed with the customer rather than left at this placeholder.
+  cost-per-ticket-usd: ${ANALYTICS_COST_PER_TICKET:15.50}
+  reporting-window-days: ${ANALYTICS_WINDOW_DAYS:30}
 
 # ──────────────────────── SERVER ────────────────────────
 server:

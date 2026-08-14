@@ -17,4 +17,13 @@ public interface KnowledgeDocumentJpaRepository extends JpaRepository<KnowledgeD
     Page<KnowledgeDocumentEntity> findByStatusAndSoftDeleteFalse(String status, Pageable pageable);
     List<KnowledgeDocumentEntity> findByDepartmentIdAndSoftDeleteFalse(UUID departmentId);
     List<KnowledgeDocumentEntity> findByWorkspaceIdAndSoftDeleteFalse(UUID workspaceId);
+
+    /** The identity of a synced record: what a re-sync upserts on rather than duplicating. */
+    Optional<KnowledgeDocumentEntity> findByConnectorTypeAndExternalId(String connectorType, String externalId);
+
+    Optional<KnowledgeDocumentEntity> findByVectorDocumentId(String vectorDocumentId);
+
+    List<KnowledgeDocumentEntity> findByConnectorTypeAndSoftDeleteFalse(String connectorType);
+
+    long countByConnectorTypeAndSoftDeleteFalse(String connectorType);
 }

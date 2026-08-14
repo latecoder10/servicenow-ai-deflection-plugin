@@ -338,7 +338,7 @@ Expected, in order:
 
 1. ~700 ms pause
 2. Right panel shows a spinner — *"Searching past incidents and knowledge..."*
-3. Panel fills: confidence badge, recommended title, summary, numbered steps, copyable command
+3. Panel fills: confidence badge, recommended title, summary, numbered steps, copyable command, and a **Based on** list citing the records the answer came from
 4. Footer shows **This solved it** / **Still need help - continue**
 
 Click **This solved it** → panel turns green. Confirm the log row: **All** → `Deflection Log` → one record with your text and `resolved`.

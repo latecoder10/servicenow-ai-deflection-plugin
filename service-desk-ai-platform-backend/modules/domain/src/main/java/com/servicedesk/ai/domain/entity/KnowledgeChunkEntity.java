@@ -29,4 +29,8 @@ public class KnowledgeChunkEntity extends AuditableEntity {
 
     @Column(name = "token_count")
     private Integer tokenCount;
+
+    /** The vector id this chunk was embedded as, joining the row to its Pinecone entry. */
+    @Column(name = "vector_chunk_id", length = 200)
+    private String vectorChunkId;
 }
