@@ -18,6 +18,32 @@ public interface DeflectionEventJpaRepository extends JpaRepository<DeflectionEv
 
     long countByCreatedAtAfter(Instant since);
 
+    /**
+     * Deflection rate over time, one row per bucket.
+     *
+     * <p>Native SQL because date_trunc has no JPQL equivalent, and bucketing in Java
+     * would mean loading every event just to count them.
+     *
+     * <p>Returns: bucket start, total queries, deflected, confirmed resolutions,
+     * average confidence. Both the offered rate and the confirmed rate are returned so
+     * the chart can show what the model claimed alongside what an agent actually
+     * accepted - the two diverge, and only the second is a real deflection.
+     *
+     * @param unit a date_trunc unit, restricted by the caller to 'day' or 'hour'
+     */
+    @Query(value = """
+        select date_trunc(:unit, created_at) as bucket,
+               count(*)                                          as queries,
+               count(*) filter (where deflected)                 as deflected,
+               count(*) filter (where outcome = 'SOLVED')        as confirmed,
+               avg(confidence_score)                             as avg_confidence
+          from deflection_analytics
+         where created_at >= :since
+         group by 1
+         order by 1
+        """, nativeQuery = true)
+    List<Object[]> deflectionTrend(@Param("unit") String unit, @Param("since") Instant since);
+
     long countByDeflectedTrueAndCreatedAtAfter(Instant since);
 
     /** Suggestions the agent explicitly confirmed resolved the problem. */

@@ -58,6 +58,20 @@ public class AnalyticsController {
         }
     }
 
+    /**
+     * Deflection rate over time, for the dashboard trend chart.
+     *
+     * <p>Hourly is offered because a freshly seeded instance has only one day of
+     * telemetry, where a daily series is a single point and reads as broken.
+     */
+    @Operation(summary = "Deflection rate over time, bucketed by day or hour")
+    @GetMapping("/deflection-trend")
+    public ResponseEntity<Map<String, Object>> getDeflectionTrend(
+            @RequestParam(name = "windowDays", defaultValue = "30") int windowDays,
+            @RequestParam(name = "granularity", defaultValue = "DAY") String granularity) {
+        return ResponseEntity.ok(analyticsService.deflectionTrend(windowDays, granularity));
+    }
+
     @Operation(summary = "Questions the knowledge base answers badly or not at all")
     @GetMapping("/knowledge-gaps")
     public ResponseEntity<Map<String, Object>> getKnowledgeGaps(

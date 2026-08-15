@@ -8,6 +8,7 @@ import com.servicedesk.ai.domain.port.out.EmbeddingPort;
 import com.servicedesk.ai.domain.port.out.KnowledgeConnector;
 import com.servicedesk.ai.domain.port.out.VectorDatabasePort;
 import com.servicedesk.ai.domain.repository.ConnectorConfigurationJpaRepository;
+import com.servicedesk.ai.domain.settings.PlatformSettingsService;
 import com.servicedesk.ai.domain.util.TextChunker;
 import com.servicedesk.ai.integration.gdrive.DriveFile;
 import com.servicedesk.ai.integration.gdrive.DriveFrontMatter;
@@ -51,18 +52,51 @@ public class GoogleDriveKnowledgeConnector implements KnowledgeConnector {
     private final VectorDatabasePort vectorDatabasePort;
     private final ConnectorConfigurationJpaRepository connectorRepository;
     private final IndexedDocumentCatalog catalog;
+    private final PlatformSettingsService settings;
 
     @Override
     public String getConnectorType() {
         return CONNECTOR_TYPE;
     }
 
+    /**
+     * Whether the connector may run. Read from settings at call time rather than from
+     * the bound config, so an operator can switch Drive on or off from the UI without
+     * a redeploy. The bound value remains the default when nothing is stored.
+     */
+    private boolean isEnabled() {
+        return settings.getBoolean("gdrive.enabled", config.isEnabled());
+    }
+
+    /**
+     * Pushes the stored folder and drive ids onto the bound config before the client
+     * reads them.
+     *
+     * <p>GoogleDriveClient takes both from GoogleDriveConfig internally, and that class
+     * lives in the integration module which does not depend on the settings service.
+     * Rather than thread the ids through every client call, the config bean is updated
+     * in place at the two entry points that precede any Drive request. Both are
+     * single-threaded per run, so there is no interleaving to worry about.
+     */
+    private void applyStoredDriveSettings() {
+        String folderId = settings.getString("gdrive.folder-id", config.getFolderId());
+        if (folderId != null && !folderId.equals(config.getFolderId())) {
+            log.info("[Drive] Using folder id from settings rather than the environment");
+            config.setFolderId(folderId);
+        }
+        String driveId = settings.getString("gdrive.drive-id", config.getDriveId());
+        if (driveId != null && !driveId.equals(config.getDriveId())) {
+            config.setDriveId(driveId);
+        }
+    }
+
     @Override
     public boolean testConnection(Map<String, String> configMap) {
-        if (!config.isEnabled()) {
+        if (!isEnabled()) {
             log.info("[Drive] Connector is disabled (gdrive.enabled=false)");
             return false;
         }
+        applyStoredDriveSettings();
         return driveClient.testConnection();
     }
 
@@ -77,7 +111,7 @@ public class GoogleDriveKnowledgeConnector implements KnowledgeConnector {
             .syncType(request.getSyncType())
             .startedAt(startedAt);
 
-        if (!config.isEnabled()) {
+        if (!isEnabled()) {
             return result.status("FAILED")
                 .errorMessage("Google Drive connector is disabled (gdrive.enabled=false)")
                 .completedAt(Instant.now())
@@ -85,14 +119,17 @@ public class GoogleDriveKnowledgeConnector implements KnowledgeConnector {
                 .build();
         }
 
+        applyStoredDriveSettings();
+
         // FULL ignores the watermark; INCREMENTAL resumes from it.
         Instant since = "FULL".equalsIgnoreCase(request.getSyncType())
             ? null
             : (request.getSinceTimestamp() != null ? request.getSinceTimestamp() : storedWatermark());
 
+        int maxFiles = settings.getInt("gdrive.max-files-per-sync", config.getMaxFilesPerSync());
         int limit = request.getBatchLimit() > 0
-            ? Math.min(request.getBatchLimit(), config.getMaxFilesPerSync())
-            : config.getMaxFilesPerSync();
+            ? Math.min(request.getBatchLimit(), maxFiles)
+            : maxFiles;
 
         int fetched = 0, created = 0, skipped = 0, failed = 0;
         Instant newestProcessed = null;

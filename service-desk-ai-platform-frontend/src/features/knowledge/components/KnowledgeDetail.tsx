@@ -18,7 +18,6 @@ import {
 import { KnowledgeRecord } from '../../../types/knowledge';
 import { StatusChip } from '../../../components/ui/StatusChip';
 import { formatDate, formatFileSize } from '../../../utils/formatters';
-import { getAttachmentDownloadUrl } from '../../../api/apiServiceNow';
 import {
   CancelRounded,
   DownloadRounded,
@@ -149,7 +148,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                     <IconButton
                       edge="end"
                       component="a"
-                      href={att.downloadUrl || getAttachmentDownloadUrl(att.id || att.attachmentSysId)}
+                      href={att.downloadUrl}
                       target="_blank"
                       download
                     >

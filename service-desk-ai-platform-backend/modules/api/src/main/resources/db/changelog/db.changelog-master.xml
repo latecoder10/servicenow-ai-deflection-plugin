@@ -8,5 +8,6 @@
     <include file="/db/changelog/changesets/20260801_full_schema.sql"/>
     <include file="/db/changelog/changesets/20260813_deflection_telemetry.sql"/>
     <include file="/db/changelog/changesets/20260814_connector_document_catalog.sql"/>
+    <include file="/db/changelog/changesets/20260814_platform_settings.sql"/>
 
 </databaseChangeLog>

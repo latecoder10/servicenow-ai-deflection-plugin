@@ -1,1 +1,60 @@
-This is the AI deflection panel, running live inside ServiceNow. We open a new incident the normal way, and nothing about the form itself has changed. The panel on the right is a scoped application: a UI macro, a client-callable script include, and a REST call out to our Spring Boot backend. Now watch. The agent types the problem, just three words. That fires a semantic search across past incidents and knowledge, and Gemini drafts the resolution. Seconds later: sixty-nine percent confidence, a clear title, and three concrete steps, grounded in five knowledge sources. That ticket never needed to be raised.
+# Timed narration.
+#
+# [seconds] starts a segment. Each is synthesised separately and placed at exactly
+# that timestamp, so a line lands on the moment it describes. A single continuous
+# take drifts: the words are paced by the voice, not by the screen, and by the
+# midpoint the narration was describing the dashboard while ServiceNow was still up.
+#
+# Timestamps below were measured from the capture, not estimated:
+#   17.0  incident form opens with the panel
+#   42.0  short description typed
+#   47.9  answer renders - 71%, five steps, four other sources
+#   65-67 external sources toggled off
+#   68.3  rebuilt answer - 70%, three sources
+#   72.5  toggled back on
+#   79.3  original answer returns
+#  103.8  "This solved it" clicked
+#  110.6  dashboard
+#  118.2  settings
+#  136.8  backend logs
+#
+# NOTE on the feedback line at [96.0]: what the platform records today is the
+# outcome - which suggestions an agent confirmed resolved the incident, and which
+# fell short. That signal drives the dashboard metrics and the knowledge-gap
+# report. It does not yet write the confirmed resolution back into the vector
+# index, so the wording stays on what is implemented.
+#
+# Blank lines and # comments are ignored.
+
+[1.5]
+This is Estuate Service Desk, running live inside ServiceNow. A user raises a new incident the way they always have. Nothing about the form itself has changed.
+
+[18.0]
+The panel on the right is ours. Behind it sits a knowledge base built from resolved ServiceNow incidents, and from external sources: internal company documents held on local servers or in the cloud. Further sources can be configured. Here, only Google Drive is connected.
+
+[42.0]
+The user types four words. VPN connection not working.
+
+[48.5]
+Seconds later: seventy one percent confidence, a clear title, and five concrete steps. Below them, the evidence. The strongest match, its relevance score, and four supporting sources, including a Google Drive document.
+
+[64.5]
+Now the source control. Switch the external sources off, and the search is limited to the ServiceNow knowledge base alone. Seventy percent, three sources, and the Drive document is gone.
+
+[79.5]
+Switch it back on, and the external knowledge base is searched alongside ServiceNow. The engine takes the best match across both and writes the summary from it. And read the line at the bottom. It tells you when it is not certain.
+
+[96.0]
+And the loop closes here. Every outcome is fed back, so the platform learns which answers actually resolve an incident.
+
+[103.8]
+Marked solved. That outcome is recorded, and no ticket was ever raised.
+
+[111.0]
+It lands on the administrative dashboard. Total incidents analysed, tickets deflected, and the support cost saved.
+
+[119.9]
+Configuration is no longer buried in an environment file. Thirteen settings, editable here: the external source folder, the sync schedule, the cost model. Secrets stay in the environment, deliberately, where they belong.
+
+[136.2]
+From a typed sentence to a grounded answer, with the evidence behind it.
