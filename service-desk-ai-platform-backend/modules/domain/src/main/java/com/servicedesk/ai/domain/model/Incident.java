@@ -24,6 +24,9 @@ public class Incident {
     private String priority; // 1 - Critical, 2 - High, 3 - Moderate, 4 - Low
     private String state; // New, In Progress, Resolved, Closed
     private String resolutionNotes;
+    /** Journal fields. Diagnostic reasoning usually lives here rather than in the description. */
+    private String workNotes;
+    private String comments;
     private String assignedGroup;
     private Instant sysCreatedOn;
     private Instant sysUpdatedOn;

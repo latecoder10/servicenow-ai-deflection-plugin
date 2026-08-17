@@ -37,35 +37,13 @@ export async function apiGetServiceNowHealth(): Promise<ApiResult<ServiceNowHeal
   }
 }
 
-export async function apiPostServiceNowSyncIncremental(params: {
-  workspace?: string;
-  sinceTimestampMs?: number;
-}): Promise<ApiResult<IncrementalSyncResponse>> {
-  try {
-    const response = await apiClient.post<IncrementalSyncResponse>(
-      '/servicenow/sync/incremental',
-      null,
-      { params }
-    );
-    return { data: response.data, error: null };
-  } catch (error) {
-    return { data: null, error: parseApiError(error) };
-  }
-}
-
-export async function apiGetAttachmentMetadata(
-  attachmentId: string
-): Promise<ApiResult<AttachmentMetadata>> {
-  try {
-    const response = await apiClient.get<AttachmentMetadata>(
-      `/servicenow/attachments/metadata/${attachmentId}`
-    );
-    return { data: response.data, error: null };
-  } catch (error) {
-    return { data: null, error: parseApiError(error) };
-  }
-}
-
-export function getAttachmentDownloadUrl(attachmentId: string): string {
-  return `/api/v1/servicenow/attachments/download/${attachmentId}`;
-}
+/*
+ * Removed: apiPostServiceNowSyncIncremental, apiGetAttachmentMetadata and
+ * getAttachmentDownloadUrl.
+ *
+ * None of the three had an endpoint behind it. Synchronisation deliberately lives on
+ * the connector API (/connectors/{type}/sync) so every knowledge source is triggered
+ * the same way, and the two attachment routes were never implemented. Attachment
+ * records already carry an absolute downloadUrl from the ServiceNow adapter, so the
+ * UI links to that directly.
+ */

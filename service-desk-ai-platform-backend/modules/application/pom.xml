@@ -8,6 +8,10 @@
         <groupId>com.servicedesk.ai</groupId>
         <artifactId>service-desk-ai-platform</artifactId>
         <version>2.5.0-SNAPSHOT</version>
+        <!-- Without this Maven looks for ../pom.xml, fails, and silently falls back
+             to whatever parent copy is installed in ~/.m2, which goes stale the
+             moment dependencyManagement changes. -->
+        <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>application</artifactId>
@@ -31,6 +35,10 @@
             <artifactId>knowledge-loader</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.servicedesk.ai</groupId>
+            <artifactId>gdrive-integration</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
@@ -41,6 +49,11 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

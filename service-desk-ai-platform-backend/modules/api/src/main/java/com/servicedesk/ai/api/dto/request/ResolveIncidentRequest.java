@@ -15,11 +15,26 @@ public record ResolveIncidentRequest(
     String userDepartment,
     String category,
 
-    int minConfidenceThreshold
+    int minConfidenceThreshold,
+
+    /**
+     * Whether documents synced from Google Drive may be used. Defaults to true when the
+     * caller omits it, so existing clients are unaffected.
+     */
+    Boolean includeDriveResults
 ) {
     public ResolveIncidentRequest {
         if (minConfidenceThreshold <= 0) {
             minConfidenceThreshold = 75; // Default L1 deflection threshold
         }
+        if (includeDriveResults == null) {
+            includeDriveResults = Boolean.TRUE;
+        }
+    }
+
+    /** Keeps the six-argument form working for existing callers and tests. */
+    public ResolveIncidentRequest(String title, String description, String callerEmail,
+                                  String userDepartment, String category, int minConfidenceThreshold) {
+        this(title, description, callerEmail, userDepartment, category, minConfidenceThreshold, Boolean.TRUE);
     }
 }

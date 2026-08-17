@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiGetAnalyticsDashboard, apiGetAnalyticsDeflection } from '../../../api/apiAnalytics';
 import { apiGetPipelineJobs } from '../../../api/apiPipeline';
 import { apiPostKnowledgeLoadSynthetic } from '../../../api/apiKnowledge';
-import { apiPostServiceNowSyncIncremental } from '../../../api/apiServiceNow';
+import { apiPostConnectorSync } from '../../../api/apiConnectors';
 import { DashboardResponse, DeflectionMetrics } from '../../../types/analytics';
 import { SyncJobEntity } from '../../../types/pipeline';
 import { ProblemDetails } from '../../../types/common';
@@ -52,13 +52,18 @@ export function useDashboard() {
   const handleTriggerSync = async () => {
     setActionLoading(true);
     toastInfo('Triggering incremental sync...');
-    const res = await apiPostServiceNowSyncIncremental({ workspace: 'Enterprise IT' });
+    // Goes through the connector API, which is the single entry point for every
+    // knowledge source. The old /servicenow/sync/incremental route never existed, so
+    // this button reported success while doing nothing.
+    const res = await apiPostConnectorSync('SERVICENOW', { syncType: 'INCREMENTAL' });
     setActionLoading(false);
 
     if (res.error) {
       toastError(res.error.detail || 'Failed to trigger sync');
     } else {
-      toastSuccess(`Sync triggered! Job ID: ${res.data.jobId}`);
+      // The sync is queued, not finished - saying "complete" here would be a lie the
+      // dashboard immediately contradicts.
+      toastSuccess(`Sync queued (job ${res.data.jobId}). Progress appears in Pipeline.`);
       fetchDashboard();
     }
   };

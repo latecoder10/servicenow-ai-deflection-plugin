@@ -31,7 +31,7 @@ public class HealthController {
         Map<String, Object> health = new LinkedHashMap<>();
         health.put("status", "healthy");
         health.put("timestamp", Instant.now().toString());
-        health.put("service", "AI Service Desk Knowledge Intelligence Platform");
+        health.put("service", "Estuate Service Desk - Knowledge Intelligence Platform");
         health.put("version", "2.5.0-SNAPSHOT");
 
         health.put("pineconeStatus", checkPinecone());

@@ -14,6 +14,7 @@ public record SuggestionResponse(
     String confidenceBand,
     boolean deflectionSuccessful,
     int sourcesCount,
+    List<SourceReference> sources,
     String generatedByModel,
     Instant createdAt,
     String correlationId

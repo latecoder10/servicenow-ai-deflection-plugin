@@ -112,16 +112,18 @@ export const AppLogo: React.FC<AppLogoProps> = ({
       >
         <Gradients />
         <HeadsetBot />
+        {/* Estuate is set apart in the brand red, matching the ServiceNow sidebar, so
+            the two surfaces read as one product rather than two tools. */}
         <text
           x="620"
           y="150"
-          fill={mode === 'dark' ? '#ffffff' : '#101828'}
           fontFamily="system-ui, -apple-system, sans-serif"
           fontSize="64"
           fontWeight="800"
           letterSpacing="-1"
         >
-          Service Desk
+          <tspan fill="#C41230">Estuate</tspan>
+          <tspan fill={mode === 'dark' ? '#ffffff' : '#101828'}> Service Desk</tspan>
         </text>
         <text
           x="622"
@@ -162,9 +164,11 @@ export const AppLogo: React.FC<AppLogoProps> = ({
             lineHeight: 1.1,
             letterSpacing: '-0.02em',
             fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            whiteSpace: 'nowrap',
           }}
         >
-          Service Desk
+          {/* Brand red on "Estuate" only, matching the ServiceNow sidebar strip. */}
+          <Box component="span" sx={{ color: '#C41230' }}>Estuate</Box> Service Desk
         </Typography>
         <Typography
           variant="caption"

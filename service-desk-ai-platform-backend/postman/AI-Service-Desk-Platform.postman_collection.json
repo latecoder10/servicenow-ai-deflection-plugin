@@ -2,13 +2,25 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Enterprise AI Knowledge Synchronization Platform",
-    "description": "Postman Collection for Enterprise AI Knowledge Synchronization Platform — ServiceNow Incident & KB Article Synchronization, Attachment Metadata References, Pinecone Vector Indexing, and AI Deflection Engine.",
+    "description": "AI Service Desk Knowledge Intelligence Platform.\n\nKnowledge sources: ServiceNow incidents and knowledge articles, plus documents synced from a shared Google Drive folder.\n\nRun order on a clean environment:\n1. Health - Platform Health Check\n2. ServiceNow Integration - Test ServiceNow Connection\n3. Google Drive Knowledge Sync - Test, then Full Sync\n4. AI Deflection Engine - Resolve Incident\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "baseUrl",
       "value": "https://currencies-history-deadline-unlikely.trycloudflare.com"
+    },
+    {
+      "key": "gdriveFolderId",
+      "value": "1FjKTwzjLZJ98GxGUONrdwSLxuZzQt_hB",
+      "type": "string",
+      "description": "Drive folder indexed by the connector. Informational: the backend reads gdrive.folder-id."
+    },
+    {
+      "key": "suggestionId",
+      "value": "",
+      "type": "string",
+      "description": "Copy from a resolve response to exercise the feedback endpoint."
     }
   ],
   "item": [
@@ -22,8 +34,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
             }
           },
           "response": []
@@ -31,7 +49,7 @@
       ]
     },
     {
-      "name": "ServiceNow Integration",
+      "name": "ServiceNow Connectivity",
       "item": [
         {
           "name": "Test ServiceNow Connection",
@@ -40,97 +58,21 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/servicenow/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "servicenow", "health"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Create Incident",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"title\": \"VPN keeps disconnecting every 30 minutes\",\n  \"description\": \"GlobalProtect VPN connection drops every 30 minutes with SAML SSO timeout error 50012.\",\n  \"category\": \"Network\",\n  \"subcategory\": \"VPN\",\n  \"priority\": \"2 - High\",\n  \"department\": \"Finance\",\n  \"callerEmail\": \"john.doe@enterprise.com\",\n  \"assignedGroup\": \"Global Network SecOps\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/servicenow/incidents",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "servicenow", "incidents"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Trigger Incremental Sync",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/servicenow/sync/incremental?workspace=Enterprise%20IT",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "servicenow", "sync", "incremental"],
-              "query": [
-                {
-                  "key": "workspace",
-                  "value": "Enterprise IT"
-                },
-                {
-                  "key": "sinceTimestampMs",
-                  "value": "",
-                  "description": "Optional: epoch ms for incremental sync window"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get Attachment Metadata",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/servicenow/attachments/metadata/{attachmentId}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "servicenow", "attachments", "metadata", "{attachmentId}"],
-              "variable": [
-                {
-                  "key": "attachmentId",
-                  "value": "att_sys_901"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Download Attachment (Proxy)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/servicenow/attachments/download/{attachmentId}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "servicenow", "attachments", "download", "{attachmentId}"],
-              "variable": [
-                {
-                  "key": "attachmentId",
-                  "value": "att_sys_901"
-                }
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "servicenow",
+                "health"
               ]
             }
           },
           "response": []
         }
-      ]
+      ],
+      "description": "Credential and reachability diagnostics only. Synchronisation lives on the connector API, which is the single entry point for every knowledge source."
     },
     {
       "name": "Connector Management",
@@ -142,11 +84,52 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/connectors",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "connectors"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors"
+              ]
             }
           },
           "response": []
+        },
+        {
+          "name": "Connector Status (all sources)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/connectors/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "status"
+              ]
+            },
+            "description": "Reachability of every registered connector. The Incident sidebar calls this to show its source indicator, so the result is cached for two minutes; pass refresh=true to force a live check."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('reports every connector', () => {",
+                  "    pm.expect(pm.response.json().connectors).to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Test Connector Connection",
@@ -164,8 +147,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/connectors/SERVICENOW/test",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "connectors", "SERVICENOW", "test"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "SERVICENOW",
+                "test"
+              ]
             }
           },
           "response": []
@@ -186,9 +177,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/connectors/SERVICENOW/sync",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "connectors", "SERVICENOW", "sync"]
-            }
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "SERVICENOW",
+                "sync"
+              ]
+            },
+            "description": "POST body is a SyncRequest: syncType (FULL | INCREMENTAL | MANUAL), workspace, batchLimit. The connector type comes from the URL path."
           },
           "response": []
         },
@@ -199,11 +199,237 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/connectors/SERVICENOW/history",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "connectors", "SERVICENOW", "history"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "SERVICENOW",
+                "history"
+              ]
             }
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Google Drive Knowledge Sync",
+      "description": "Indexes .docx and Google Docs from a shared Drive folder.\n\nSetup: a Google Cloud service account with the Drive API enabled, its JSON key at gdrive.credentials-path, and the target folder shared with the account's client_email as Viewer.\n\nSync is incremental by modification time. Each run advances a watermark stored on the connector_configurations row, so only changed documents are re-indexed.",
+      "item": [
+        {
+          "name": "Test Google Drive Connection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/connectors/GOOGLE_DRIVE/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "GOOGLE_DRIVE",
+                "test"
+              ]
+            },
+            "description": "Verifies the service account key signs, the token exchange succeeds, and the configured folder is readable. Returns false if gdrive.enabled is off.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('connector is CONNECTED', () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b.status, b.message).to.eql('CONNECTED');",
+                  "});",
+                  "",
+                  "// DISCONNECTED here means one of: gdrive.enabled is false, the key path is",
+                  "// wrong, the Drive API is not enabled on the project, or the folder was not",
+                  "// shared with the service account's client_email."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Full Sync (index every document)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/connectors/GOOGLE_DRIVE/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "GOOGLE_DRIVE",
+                "sync"
+              ]
+            },
+            "description": "Ignores the stored watermark and re-indexes every document in the folder.\n\nThe connector type comes from the URL path; syncType, workspace and batchLimit come from the body (SyncRequest).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"syncType\": \"FULL\",\n  \"workspace\": \"Enterprise IT\",\n  \"batchLimit\": 500\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accepted', () => pm.expect(pm.response.code).to.be.oneOf([200, 202]));",
+                  "",
+                  "// The response is the async SyncResult. Counts land in Drive Sync History",
+                  "// once the job finishes.",
+                  "const b = pm.response.json();",
+                  "console.log('sync response: ' + JSON.stringify(b));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Incremental Sync (changed since last run)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/connectors/GOOGLE_DRIVE/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "GOOGLE_DRIVE",
+                "sync"
+              ]
+            },
+            "description": "Indexes only documents modified since the stored watermark.\n\nThe connector type comes from the URL path; syncType, workspace and batchLimit come from the body (SyncRequest).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"syncType\": \"INCREMENTAL\",\n  \"workspace\": \"Enterprise IT\",\n  \"batchLimit\": 500\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accepted', () => pm.expect(pm.response.code).to.be.oneOf([200, 202]));",
+                  "",
+                  "// The response is the async SyncResult. Counts land in Drive Sync History",
+                  "// once the job finishes.",
+                  "const b = pm.response.json();",
+                  "console.log('sync response: ' + JSON.stringify(b));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Drive Sync History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/connectors/GOOGLE_DRIVE/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "GOOGLE_DRIVE",
+                "history"
+              ]
+            },
+            "description": "Past sync runs with counts of documents fetched, indexed, skipped and failed. Skipped usually means an unsupported file type, such as a spreadsheet."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify a Drive document is retrievable",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/search?query=working from home cannot connect&topK=3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "working from home cannot connect"
+                },
+                {
+                  "key": "topK",
+                  "value": "3"
+                }
+              ]
+            },
+            "description": "Proves the Drive path end to end. The phrase 'working from home' appears only in the Keywords line of the VPN article, not in its title or body, so a hit here shows keyword extraction is working rather than plain text matching."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns results', () => {",
+                  "    pm.expect(pm.response.json().results).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -216,9 +442,16 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/knowledge/search?query=Outlook%20Web%20Access%20crashing&topK=5",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "knowledge", "search"],
+              "raw": "{{baseUrl}}/api/v1/knowledge/search?query=Outlook Web Access crashing&topK=5&department=IT",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "search"
+              ],
               "query": [
                 {
                   "key": "query",
@@ -227,9 +460,15 @@
                 {
                   "key": "topK",
                   "value": "5"
+                },
+                {
+                  "key": "department",
+                  "value": "IT",
+                  "disabled": true
                 }
               ]
-            }
+            },
+            "description": "Semantic search across every populated namespace, not just the current date window.\n\ndepartment and category are optional Pinecone metadata filters; if a filter matches nothing the query is retried unfiltered. The parameter is 'department', not 'workspace' - passing a workspace value matched nothing and silently fell back.\n\ntopK is clamped to 1-50."
           },
           "response": []
         },
@@ -240,8 +479,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/knowledge/records?daysBack=30&limit=50&offset=0",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "knowledge", "records"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "records"
+              ],
               "query": [
                 {
                   "key": "daysBack",
@@ -267,8 +513,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/knowledge/records/{recordSysId}/reindex",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "knowledge", "records", "{recordSysId}", "reindex"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "records",
+                "{recordSysId}",
+                "reindex"
+              ],
               "variable": [
                 {
                   "key": "recordSysId",
@@ -286,8 +541,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/knowledge/records/{recordSysId}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "knowledge", "records", "{recordSysId}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "records",
+                "{recordSysId}"
+              ],
               "variable": [
                 {
                   "key": "recordSysId",
@@ -305,48 +568,36 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/knowledge/load-synthetic",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "knowledge", "load-synthetic"]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Pipeline & Jobs",
-      "item": [
-        {
-          "name": "List Recent Pipeline Jobs",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/pipeline/jobs",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "pipeline", "jobs"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get Pipeline Job by ID",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/pipeline/jobs/{jobId}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "pipeline", "jobs", "{jobId}"],
-              "variable": [
-                {
-                  "key": "jobId",
-                  "value": "sync-abc12345"
-                }
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "load-synthetic"
               ]
-            }
+            },
+            "description": "Writes fabricated resolved incidents into the connected ServiceNow instance to seed a demo.\n\nDisabled by default and answers 403. Set knowledge.synthetic-data.enabled=true (or KNOWLEDGE_SYNTHETIC_ENABLED=true) to allow it, and never against an instance holding real tickets."
           },
-          "response": []
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 403 is the correct answer unless the seeder has been deliberately enabled.",
+                  "pm.test('either seeded or correctly refused', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 403]);",
+                  "});",
+                  "if (pm.response.code === 403) {",
+                  "    console.log('Synthetic loading is disabled, which is the safe default.');",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -365,17 +616,151 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"VPN keeps disconnecting every 30 minutes\",\n  \"description\": \"My GlobalProtect VPN connection drops every 30 minutes. SAML SSO authentication timeout error 50012.\",\n  \"callerEmail\": \"john.doe@enterprise.com\",\n  \"userDepartment\": \"Finance\",\n  \"category\": \"Network\",\n  \"minConfidenceThreshold\": 75\n}"
+              "raw": "{\n  \"title\": \"VPN keeps disconnecting every 30 minutes\",\n  \"description\": \"My GlobalProtect VPN connection drops every 30 minutes. SAML SSO authentication timeout error 50012.\",\n  \"callerEmail\": \"john.doe@enterprise.com\",\n  \"userDepartment\": \"Finance\",\n  \"category\": \"Network\",\n  \"minConfidenceThreshold\": 75,\n  \"includeDriveResults\": true\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/suggestions/resolve",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "suggestions", "resolve"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "suggestions",
+                "resolve"
+              ]
+            },
+            "description": "userDepartment and category are applied as metadata filters at query time. If the filter matches nothing the search is retried unfiltered, so a narrow category never produces an empty panel.\n\nminConfidenceThreshold is an integer 0-100, not a decimal.\n\nincludeDriveResults mirrors the sidebar toggle. Set it to false to exclude documents synced from Google Drive; the search then returns fewer results rather than substituting weaker ones."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const b = pm.response.json();",
+                  "",
+                  "pm.test('has a resolution', () => {",
+                  "    pm.expect(b.summaryResolution).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test('steps are real, not the truncation placeholder', () => {",
+                  "    pm.expect(b.stepByStepInstructions).to.be.an('array').that.is.not.empty;",
+                  "    const first = b.stepByStepInstructions[0];",
+                  "    pm.expect(first, 'LLM response was truncated - check finishReason=MAX_TOKENS')",
+                  "        .to.not.include('Review the provided knowledge base context');",
+                  "});",
+                  "",
+                  "pm.test('answer is attributed to its sources', () => {",
+                  "    pm.expect(b.sources, 'sources missing from the response').to.be.an('array');",
+                  "    if (b.sourcesCount > 0) {",
+                  "        pm.expect(b.sources.length, 'sourcesCount > 0 but nothing cited').to.be.above(0);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('citations carry a followable link', () => {",
+                  "    b.sources.forEach(s => {",
+                  "        pm.expect(s).to.have.property('recordType');",
+                  "        if (s.url) { pm.expect(s.url).to.match(/^https?:\\/\\//); }",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve Incident (should cite a Drive article)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/suggestions/resolve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "suggestions",
+                "resolve"
+              ]
+            },
+            "description": "Phrased to match the IT-002 knowledge article rather than a historical incident. Check the sources array for a GOOGLE_DRIVE_DOC entry.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Cannot connect to VPN while working from home\",\n  \"description\": \"The client will not connect from my home wifi. It worked in the office yesterday.\",\n  \"callerEmail\": \"jane.doe@enterprise.com\",\n  \"userDepartment\": \"IT\",\n  \"category\": \"Network & Connectivity\",\n  \"minConfidenceThreshold\": 60,\n  \"includeDriveResults\": true\n}"
             }
           },
-          "response": []
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('cites at least one source', () => {",
+                  "    pm.expect(pm.response.json().sources).to.be.an('array');",
+                  "});",
+                  "",
+                  "const drive = pm.response.json().sources.filter(s => s.recordType === 'GOOGLE_DRIVE_DOC');",
+                  "console.log('Drive-sourced citations: ' + drive.length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record Feedback (This solved it)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/suggestions/{{suggestionId}}/feedback?outcome=SOLVED",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "suggestions",
+                "{{suggestionId}}",
+                "feedback"
+              ],
+              "query": [
+                {
+                  "key": "outcome",
+                  "value": "SOLVED"
+                }
+              ]
+            },
+            "description": "Records what the agent decided. Only SOLVED and CONTINUED are accepted; anything else is rejected so the deflection rate cannot be quietly corrupted.\n\nSet the suggestionId variable from a resolve response first."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 404 here means the suggestion id was never recorded, which is itself a finding.",
+                  "pm.test('recorded', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         }
-      ]
+      ],
+      "description": "Generates a resolution for a ticket being typed.\n\nThe response carries a `sources` array citing the records the answer drew on, each with a record number, type and a deep link into ServiceNow or Drive."
     },
     {
       "name": "Analytics & Dashboard",
@@ -387,8 +772,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/analytics/dashboard",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "analytics", "dashboard"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "analytics",
+                "dashboard"
+              ]
             }
           },
           "response": []
@@ -400,13 +792,111 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/analytics/deflection",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "analytics", "deflection"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "analytics",
+                "deflection"
+              ]
             }
           },
           "response": []
+        },
+        {
+          "name": "Knowledge Gaps",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/analytics/knowledge-gaps?windowDays=30&minOccurrences=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "analytics",
+                "knowledge-gaps"
+              ],
+              "query": [
+                {
+                  "key": "windowDays",
+                  "value": "30"
+                },
+                {
+                  "key": "minOccurrences",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "Questions the corpus answered badly or not at all. noResults are outright misses; recurringLowConfidence are questions asked repeatedly where the answer stayed below the deflection threshold. Both are candidates for a new article."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('reports all three signals', () => {",
+                  "    pm.expect(b).to.have.property('noResults');",
+                  "    pm.expect(b).to.have.property('recurringLowConfidence');",
+                  "    pm.expect(b).to.have.property('byCategory');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Top Questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/analytics/top-questions?windowDays=30&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "analytics",
+                "top-questions"
+              ],
+              "query": [
+                {
+                  "key": "windowDays",
+                  "value": "30"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Most frequently asked questions in the window, with the average match quality. High volume with a low score is where the knowledge base is weakest."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         }
-      ]
+      ],
+      "description": "Computed from recorded suggestions and searches, so the figures survive a restart and describe a real period."
     },
     {
       "name": "File Upload & Storage",
@@ -434,8 +924,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/files/upload",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "files", "upload"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "files",
+                "upload"
+              ]
             }
           },
           "response": []
@@ -447,8 +944,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/files/jobs/{jobId}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "files", "jobs", "{jobId}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "files",
+                "jobs",
+                "{jobId}"
+              ],
               "variable": [
                 {
                   "key": "jobId",
@@ -466,8 +971,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/files",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "files"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "files"
+              ]
             }
           },
           "response": []
@@ -479,8 +990,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/files/{documentId}/download",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "files", "{documentId}", "download"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "files",
+                "{documentId}",
+                "download"
+              ],
               "variable": [
                 {
                   "key": "documentId",

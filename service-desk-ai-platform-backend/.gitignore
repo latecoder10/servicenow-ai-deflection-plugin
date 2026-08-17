@@ -31,3 +31,8 @@ output/
 .mvn/
 mvnw
 mvnw.cmd
+
+# Google Drive service account keys
+secrets/
+*-service-account*.json
+gdrive-key*.json

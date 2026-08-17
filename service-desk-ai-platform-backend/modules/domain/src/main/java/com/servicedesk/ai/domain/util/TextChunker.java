@@ -58,4 +58,17 @@ public class TextChunker {
         
         return chunks;
     }
+
+    /**
+     * Approximate token count for a chunk, on the same words x 1.3 basis the sliding
+     * window chunker uses, so the figure means the same thing whichever ingest path
+     * produced the chunk. This returns strings rather than chunk objects, so callers
+     * had nothing to record and every synced chunk was indexed with a count of zero.
+     */
+    public static int estimateTokens(String text) {
+        if (text == null || text.isBlank()) {
+            return 0;
+        }
+        return (int) (text.trim().split("\\s+").length * 1.3);
+    }
 }

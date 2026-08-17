@@ -32,13 +32,40 @@ public class AsyncKnowledgeSyncService {
     private final SyncJobJpaRepository syncJobRepository;
     private final AuditLogJpaRepository auditLogRepository;
 
+    /**
+     * One run per connector at a time.
+     *
+     * Two concurrent syncs of the same source do the same work twice and double the
+     * embedding request rate, which is enough on its own to exceed the provider's
+     * per-minute quota and make both runs report failures.
+     */
+    private final java.util.Map<String, java.util.concurrent.atomic.AtomicBoolean> running =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
     @Async("taskExecutor")
     public CompletableFuture<SyncResult> triggerSyncAsync(SyncRequest request) {
         String jobId = request.getJobId() != null ? request.getJobId() : "sync-" + UUID.randomUUID().toString();
         request.setJobId(jobId);
 
         String connectorType = request.getConnectorType() != null ? request.getConnectorType().toUpperCase() : "SERVICENOW";
-        
+
+        java.util.concurrent.atomic.AtomicBoolean lock =
+            running.computeIfAbsent(connectorType, k -> new java.util.concurrent.atomic.AtomicBoolean(false));
+        if (!lock.compareAndSet(false, true)) {
+            log.warn("[Sync Pipeline] A {} sync is already running; job {} was not started", connectorType, jobId);
+            return CompletableFuture.completedFuture(SyncResult.builder()
+                .jobId(jobId)
+                .connectorType(connectorType)
+                .syncType(request.getSyncType())
+                .status("SKIPPED")
+                .errorMessage("A sync for " + connectorType + " is already in progress")
+                .startedAt(java.time.Instant.now())
+                .completedAt(java.time.Instant.now())
+                .build());
+        }
+
+        try {
+
         // Save initial job entity in PostgreSQL
         SyncJobEntity jobEntity = SyncJobEntity.builder()
             .jobId(jobId)
@@ -99,6 +126,10 @@ public class AsyncKnowledgeSyncService {
                 .startedAt(Instant.now())
                 .completedAt(Instant.now())
                 .build());
+        }
+
+        } finally {
+            lock.set(false);
         }
     }
 }

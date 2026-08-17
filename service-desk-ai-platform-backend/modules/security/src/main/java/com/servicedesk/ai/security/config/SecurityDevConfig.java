@@ -11,7 +11,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @EnableWebSecurity
-@Profile("dev")
+@Profile("//")
 public class SecurityDevConfig {
 
     @Bean

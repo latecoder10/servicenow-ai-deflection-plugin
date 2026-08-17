@@ -3,6 +3,7 @@ import { Box, Typography, Button } from '@mui/material';
 import { useHealth } from '../hooks/useHealth';
 import { HealthStatus } from './HealthStatus';
 import { SystemInfo } from './SystemInfo';
+import { PlatformConfiguration } from './PlatformConfiguration';
 import { ErrorAlert } from '../../../components/ui/ErrorAlert';
 import { RefreshRounded } from '../../../icons';
 
@@ -34,6 +35,8 @@ export const SettingsPage: React.FC = () => {
       <ErrorAlert error={error} />
 
       <HealthStatus health={health} serviceNowHealth={serviceNowHealth} />
+
+      <PlatformConfiguration />
 
       <SystemInfo health={health} />
     </Box>

@@ -73,4 +73,27 @@ public final class AppConstants {
     public static final String META_CONNECTOR_TYPE = "connectorType";
     public static final String META_YEAR = "year";
     public static final String META_ATTACHMENT_COUNT = "attachmentCount";
+    public static final String META_SUBCATEGORY = "subcategory";
+    public static final String META_ASSIGNMENT_GROUP = "assignmentGroup";
+
+    // Document-level fields that used to be carried on DocumentMetadata but never
+    // written to the index, so every search result returned them as null. Named here so
+    // the upsert and the query read the same keys.
+    public static final String META_SOURCE_TYPE = "sourceType";
+    public static final String META_SOURCE_URI = "sourceUri";
+    /**
+     * A source's own address. Predates META_SOURCE_URI in the index, written by the
+     * Drive connector, and still read first so vectors already carrying it keep working.
+     */
+    public static final String META_SOURCE_URL = "sourceUrl";
+    public static final String META_OWNER_EMAIL = "ownerEmail";
+    public static final String META_TAGS = "tags";
+    public static final String META_VERSION = "version";
+    public static final String META_CREATED_DATE = "createdDate";
+    public static final String META_LAST_INDEXED_DATE = "lastIndexedDate";
+    public static final String META_TOKEN_COUNT = "tokenCount";
+    public static final String META_HEADER_HIERARCHY = "headerHierarchy";
+
+    /** Separates the tags set when it is flattened into a single metadata string. */
+    public static final String META_TAG_SEPARATOR = ",";
 }

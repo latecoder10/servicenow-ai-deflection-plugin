@@ -23,6 +23,19 @@ public interface VectorDatabasePort {
     }
     
     List<KnowledgeChunk> similaritySearch(String collectionName, List<Float> queryVector, int topK, String departmentFilter, String categoryFilter);
+
+    /**
+     * Narrows a search to particular knowledge sources.
+     *
+     * @param excludedConnectorTypes connector types to leave out, e.g. GOOGLE_DRIVE when
+     *                               the agent has switched Drive results off. Empty means
+     *                               search everything.
+     */
+    default List<KnowledgeChunk> similaritySearch(String collectionName, List<Float> queryVector, int topK,
+                                                  String departmentFilter, String categoryFilter,
+                                                  java.util.Set<String> excludedConnectorTypes) {
+        return similaritySearch(collectionName, queryVector, topK, departmentFilter, categoryFilter);
+    }
     
     void deleteByDocumentId(String collectionName, String documentId);
     

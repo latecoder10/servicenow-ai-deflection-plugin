@@ -1,6 +1,6 @@
 export const API_BASE_URL = '/api/v1';
 
-export const APP_NAME = 'AI Service Desk';
+export const APP_NAME = 'Estuate Service Desk';
 export const APP_VERSION = '1.0.0-enterprise';
 
 export const DEFAULT_PAGE_SIZE = 10;
